@@ -12,3 +12,5 @@ tf-keras
 wordcloud
 matplotlib
 fpdf
+streamlit-folium
+folium
