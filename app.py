@@ -2,53 +2,90 @@ import streamlit as st
 import feedparser
 import pandas as pd
 from transformers import pipeline
-from datetime import datetime
-import plotly.express as px # Para gráficos bonitos
-from urllib.parse import quote # <--- ESTA ES LA HERRAMIENTA NUEVA
+from datetime import datetime, timedelta
+import time
+import plotly.express as px
+from urllib.parse import quote
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(page_title="Sentinel AI Dashboard", layout="wide")
+st.set_page_config(page_title="Sentinel AI Pro", layout="wide", page_icon="📡")
 
-st.title("📡 Sentinel AI: Monitor de Medios")
-st.markdown("Monitor de reputación y análisis de sentimiento en tiempo real.")
+st.title("📡 Sentinel AI: Monitor de Medios Pro")
+st.markdown("Monitor de reputación, análisis de sentimiento y escucha social.")
 
 # --- BARRA LATERAL (CONTROLES) ---
-st.sidebar.header("Configuración")
-tema_busqueda = st.sidebar.text_input("Tema a monitorear en Google News", "Tecnología")
-btn_actualizar = st.sidebar.button("🔄 Ejecutar Análisis")
+st.sidebar.header("🎛️ Panel de Control")
 
-# --- FUNCIONES (EL CEREBRO) ---
-@st.cache_resource # Esto evita cargar la IA cada vez, lo hace más rápido
+# 1. INPUT DE TEMA
+tema_busqueda = st.sidebar.text_input("Tema o Persona a monitorear", "La Serena")
+
+# 2. SELECTOR DE FUENTES
+tipo_fuente = st.sidebar.radio(
+    "¿Dónde buscar?",
+    ("Todo Internet", "Solo Prensa/Noticias", "Redes Sociales (Twitter/FB/Reddit)")
+)
+
+# 3. FILTRO DE FECHAS
+st.sidebar.subheader("📅 Rango de Fechas")
+col_fecha1, col_fecha2 = st.sidebar.columns(2)
+fecha_inicio = col_fecha1.date_input("Desde", datetime.now() - timedelta(days=7))
+fecha_fin = col_fecha2.date_input("Hasta", datetime.now())
+
+btn_actualizar = st.sidebar.button("🔄 Ejecutar Análisis", type="primary")
+
+# --- FUNCIONES ---
+@st.cache_resource
 def cargar_modelo():
     return pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
-def analizar_noticias(tema):
-    analizador = cargar_modelo()
+def construir_url_rss(tema, tipo):
+    tema_seguro = quote(tema)
     
-    # URL dinámica de Google News
-    # AQUI ESTA EL ARREGLO: usamos quote(tema) para arreglar los espacios
-    tema_arreglado = quote(tema)
-    url = f"https://news.google.com/rss/search?q={tema_arreglado}&hl=es-419&gl=CL&ceid=CL:es-419"
+    # Truco para "Redes Sociales": Forzamos a Google a buscar en sitios específicos
+    if tipo == "Redes Sociales (Twitter/FB/Reddit)":
+        query = f"{tema_seguro} site:twitter.com OR site:facebook.com OR site:instagram.com OR site:reddit.com"
+    elif tipo == "Solo Prensa/Noticias":
+        query = f"{tema_seguro} when:7d" # Prioriza noticias recientes
+    else:
+        query = tema_seguro
+
+    # URL base de Google News RSS
+    return f"https://news.google.com/rss/search?q={query}&hl=es-419&gl=CL&ceid=CL:es-419"
+
+def convertir_fecha(struct_time):
+    # Convierte el formato extraño del RSS a una fecha normal de Python
+    if struct_time:
+        return datetime.fromtimestamp(time.mktime(struct_time)).date()
+    return datetime.now().date()
+
+def analizar_noticias(tema, tipo, f_inicio, f_fin):
+    analizador = cargar_modelo()
+    url = construir_url_rss(tema, tipo)
     
     noticias = feedparser.parse(url)
-    
     resultados = []
-    barra_progreso = st.progress(0)
     
-    # Verificamos si hay noticias
     if not noticias.entries:
         return pd.DataFrame()
 
-    total = min(len(noticias.entries), 10) # Analizamos máx 10 noticias para ir rápido
+    # Barra de progreso
+    barra = st.progress(0)
+    total_items = len(noticias.entries)
     
-    for i, noticia in enumerate(noticias.entries[:10]):
+    for i, noticia in enumerate(noticias.entries):
+        # 1. FILTRO DE FECHA
+        fecha_noticia = convert_fecha(noticia.published_parsed)
+        
+        # Si la noticia está fuera del rango seleccionado, la saltamos
+        if not (f_inicio <= fecha_noticia <= f_fin):
+            continue
+
         titulo = noticia.title
         link = noticia.link
-        fecha = datetime.now().strftime("%H:%M")
         
         try:
-            # IA Analiza
-            pred = analizador(titulo)[0]
+            # 2. ANÁLISIS IA
+            pred = analizador(titulo[:512])[0] # Cortamos a 512 caracteres por seguridad
             score = int(pred['label'].split()[0])
             
             if score <= 2:
@@ -62,8 +99,8 @@ def analizar_noticias(tema):
                 color = "🟢"
                 
             resultados.append({
-                "Hora": fecha,
-                "Fuente": "Google News",
+                "Fecha": fecha_noticia,
+                "Fuente": noticia.source.title if 'source' in noticia else "Web",
                 "Titular": titulo,
                 "Sentimiento": sent,
                 "Icono": color,
@@ -71,52 +108,75 @@ def analizar_noticias(tema):
                 "Link": link
             })
         except Exception as e:
-            print(f"Error analizando noticia: {e}")
-            
-        barra_progreso.progress((i + 1) / total)
+            pass # Si falla una noticia, seguimos con la otra
         
-    barra_progreso.empty()
+        # Actualizar barra (asegurando no dividir por cero)
+        if total_items > 0:
+            barra.progress((i + 1) / total_items)
+            
+    barra.empty()
     return pd.DataFrame(resultados)
 
 # --- INTERFAZ PRINCIPAL ---
 
 if btn_actualizar:
-    with st.spinner(f'Analizando "{tema_busqueda}" en la web...'):
-        df = analizar_noticias(tema_busqueda)
+    st.markdown(f"### 🔎 Analizando: *{tema_busqueda}*")
+    st.caption(f"Buscando en: {tipo_fuente} | Desde: {fecha_inicio} Hasta: {fecha_fin}")
+    
+    with st.spinner('Escaneando la web...'):
+        df = analizar_noticias(tema_busqueda, tipo_fuente, fecha_inicio, fecha_fin)
         
     if not df.empty:
-        # MÉTRICAS ARRIBA
-        col1, col2, col3 = st.columns(3)
+        # MÉTRICAS
+        col1, col2, col3, col4 = st.columns(4)
         positivos = len(df[df['Sentimiento'] == 'Positivo'])
         negativos = len(df[df['Sentimiento'] == 'Negativo'])
+        neutros = len(df[df['Sentimiento'] == 'Neutro'])
         
-        col1.metric("Noticias Positivas", positivos, delta="🟢 Buena reputación")
-        col2.metric("Noticias Negativas", negativos, delta="-🔴 Riesgo", delta_color="inverse")
-        col3.metric("Total Analizado", len(df))
+        col1.metric("Total Hallazgos", len(df))
+        col2.metric("Positivos", positivos, delta="🟢")
+        col3.metric("Negativos", negativos, delta="🔴", delta_color="inverse")
+        col4.metric("Neutros", neutros, delta="🟡", delta_color="off")
         
-        # GRÁFICOS
-        c1, c2 = st.columns([2, 1])
+        st.divider()
+
+        # GRÁFICOS Y DATOS
+        c1, c2 = st.columns([1, 1])
         
         with c1:
-            st.subheader("Tendencia de Sentimiento")
-            fig_torta = px.pie(df, names='Sentimiento', title='Distribución de Opinión', 
+            st.subheader("📊 Sentimiento General")
+            fig_torta = px.pie(df, names='Sentimiento', 
                                color='Sentimiento',
-                               color_discrete_map={'Positivo':'green', 'Negativo':'red', 'Neutro':'gold'})
+                               color_discrete_map={'Positivo':'#2ECC71', 'Negativo':'#E74C3C', 'Neutro':'#F1C40F'},
+                               hole=0.4)
             st.plotly_chart(fig_torta, use_container_width=True)
             
         with c2:
-            st.subheader("Últimos Titulares")
-            for index, row in df.iterrows():
-                st.markdown(f"{row['Icono']} **[{row['Titular']}]({row['Link']})**")
-                st.caption(f"Score IA: {row['Score']}/5")
-                st.divider()
+            st.subheader("📈 Evolución en el tiempo")
+            # Agrupar por fecha para ver tendencias
+            df_trend = df.groupby(['Fecha', 'Sentimiento']).size().reset_index(name='Cantidad')
+            if not df_trend.empty:
+                fig_linea = px.bar(df_trend, x='Fecha', y='Cantidad', color='Sentimiento',
+                                    color_discrete_map={'Positivo':'#2ECC71', 'Negativo':'#E74C3C', 'Neutro':'#F1C40F'})
+                st.plotly_chart(fig_linea, use_container_width=True)
+            else:
+                st.info("No hay suficientes datos temporales para un gráfico de línea.")
 
-        # TABLA DE DATOS
-        with st.expander("Ver tabla completa de datos"):
-            st.dataframe(df)
+        st.subheader("📰 Últimos Titulares Detectados")
+        
+        # Mostramos las noticias en tarjetas bonitas
+        for index, row in df.iterrows():
+            with st.container():
+                col_icono, col_texto = st.columns([1, 10])
+                with col_icono:
+                    st.markdown(f"## {row['Icono']}")
+                with col_texto:
+                    st.markdown(f"**[{row['Titular']}]({row['Link']})**")
+                    st.caption(f"📅 {row['Fecha']} | 🏢 {row['Fuente']} | ⭐ Confianza IA: {row['Score']}/5")
+                st.divider()
             
     else:
-        st.warning(f"No se encontraron noticias recientes sobre '{tema_busqueda}'.")
+        st.warning("No se encontraron resultados en ese rango de fechas. Intenta ampliar el rango o cambiar el tema.")
 
 else:
-    st.info("👈 Escribe un tema en la barra lateral y presiona 'Ejecutar Análisis'")
+    st.info("👈 Configura tu búsqueda en el menú izquierdo y presiona 'Ejecutar Análisis'")
