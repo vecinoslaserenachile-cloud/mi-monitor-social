@@ -4,6 +4,7 @@ import pandas as pd
 from transformers import pipeline
 from datetime import datetime
 import plotly.express as px # Para gráficos bonitos
+from urllib.parse import quote # <--- ESTA ES LA HERRAMIENTA NUEVA
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="Sentinel AI Dashboard", layout="wide")
@@ -23,12 +24,21 @@ def cargar_modelo():
 
 def analizar_noticias(tema):
     analizador = cargar_modelo()
+    
     # URL dinámica de Google News
-    url = f"https://news.google.com/rss/search?q={tema}&hl=es-419&gl=CL&ceid=CL:es-419"
+    # AQUI ESTA EL ARREGLO: usamos quote(tema) para arreglar los espacios
+    tema_arreglado = quote(tema)
+    url = f"https://news.google.com/rss/search?q={tema_arreglado}&hl=es-419&gl=CL&ceid=CL:es-419"
+    
     noticias = feedparser.parse(url)
     
     resultados = []
     barra_progreso = st.progress(0)
+    
+    # Verificamos si hay noticias
+    if not noticias.entries:
+        return pd.DataFrame()
+
     total = min(len(noticias.entries), 10) # Analizamos máx 10 noticias para ir rápido
     
     for i, noticia in enumerate(noticias.entries[:10]):
@@ -36,29 +46,33 @@ def analizar_noticias(tema):
         link = noticia.link
         fecha = datetime.now().strftime("%H:%M")
         
-        # IA Analiza
-        pred = analizador(titulo)[0]
-        score = int(pred['label'].split()[0])
-        
-        if score <= 2:
-            sent = "Negativo"
-            color = "🔴"
-        elif score == 3:
-            sent = "Neutro"
-            color = "🟡"
-        else:
-            sent = "Positivo"
-            color = "🟢"
+        try:
+            # IA Analiza
+            pred = analizador(titulo)[0]
+            score = int(pred['label'].split()[0])
             
-        resultados.append({
-            "Hora": fecha,
-            "Fuente": "Google News",
-            "Titular": titulo,
-            "Sentimiento": sent,
-            "Icono": color,
-            "Score": score,
-            "Link": link
-        })
+            if score <= 2:
+                sent = "Negativo"
+                color = "🔴"
+            elif score == 3:
+                sent = "Neutro"
+                color = "🟡"
+            else:
+                sent = "Positivo"
+                color = "🟢"
+                
+            resultados.append({
+                "Hora": fecha,
+                "Fuente": "Google News",
+                "Titular": titulo,
+                "Sentimiento": sent,
+                "Icono": color,
+                "Score": score,
+                "Link": link
+            })
+        except Exception as e:
+            print(f"Error analizando noticia: {e}")
+            
         barra_progreso.progress((i + 1) / total)
         
     barra_progreso.empty()
@@ -102,7 +116,7 @@ if btn_actualizar:
             st.dataframe(df)
             
     else:
-        st.warning("No se encontraron noticias recientes.")
+        st.warning(f"No se encontraron noticias recientes sobre '{tema_busqueda}'.")
 
 else:
     st.info("👈 Escribe un tema en la barra lateral y presiona 'Ejecutar Análisis'")
