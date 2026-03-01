@@ -9,3 +9,5 @@ altair<5
 sentencepiece
 numpy<2
 tf-keras
+wordcloud
+matplotlib
