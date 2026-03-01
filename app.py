@@ -16,120 +16,127 @@ from streamlit_folium import st_folium
 from folium.plugins import HeatMap, MarkerCluster
 import random
 
-# --- 1. CONFIGURACIÓN ---
+# --- 1. CONFIGURACIÓN E IDENTIDAD ---
 st.set_page_config(
-    page_title="Sentinel AI: Deep Mining", 
+    page_title="El Faro | Sentinel Intelligence", 
     layout="wide", 
-    page_icon="📡",
-    initial_sidebar_state="expanded"
+    page_icon="️lighthouse",
+    initial_sidebar_state="collapsed"
 )
 
-# --- 2. ESTILOS CSS (Mejorados para Móvil y Escritorio) ---
+# --- 2. ESTILOS PRO (NEON & GLASS) ---
 st.markdown("""
     <style>
-    .main { background: linear-gradient(180deg, #0e1117 0%, #161b22 100%); }
-    h1 { background: -webkit-linear-gradient(#00c6ff, #0072ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    /* Fondo Oscuro Profundo */
+    .main { background: #0f172a; color: #e2e8f0; }
+    
+    /* Títulos */
+    h1 { 
+        background: linear-gradient(to right, #0ea5e9, #22d3ee); 
+        -webkit-background-clip: text; 
+        -webkit-text-fill-color: transparent; 
+        font-weight: 900; letter-spacing: -1px;
+    }
+    h2, h3 { color: #f1f5f9 !important; }
     
     /* Métricas */
     div[data-testid="stMetric"] {
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 10px;
-        padding: 10px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(30, 41, 59, 0.7);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 12px;
+        padding: 15px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
     
-    /* Botón de Acción */
+    /* Botones */
     .stButton>button {
-        background: linear-gradient(90deg, #0062cc 0%, #00c6ff 100%);
-        color: white; border: none; padding: 15px; border-radius: 8px;
-        font-weight: bold; width: 100%; letter-spacing: 1px;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white; border: none; padding: 12px 24px;
+        border-radius: 8px; font-weight: 600; text-transform: uppercase;
+        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.4);
+        width: 100%;
     }
+    .stButton>button:hover { transform: scale(1.02); }
     
     /* Tabs */
     .stTabs [aria-selected="true"] {
-        background-color: #0072ff !important;
+        background-color: #0ea5e9 !important;
         color: white !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 3. MEMORIA ---
-if 'data_mining' not in st.session_state:
-    st.session_state.data_mining = pd.DataFrame(columns=['Fecha', 'Fuente', 'Titular', 'Sentimiento', 'Link', 'Score', 'Tipo', 'Lat', 'Lon', 'Lugar', 'Manual'])
+if 'data_raw' not in st.session_state:
+    st.session_state.data_raw = pd.DataFrame(columns=['Fecha', 'Fuente', 'Titular', 'Sentimiento', 'Link', 'Score', 'Tipo', 'Lat', 'Lon', 'Lugar', 'Manual'])
 
-# --- 4. DATA GEOESPACIAL ---
+# --- 4. GEODATA (AMPLIADA) ---
 GEO_DB = {
     "avenida del mar": [-29.9168, -71.2785], "faro": [-29.9073, -71.2847], "centro": [-29.9027, -71.2519],
     "plaza de armas": [-29.9027, -71.2519], "las compañías": [-29.8783, -71.2389], "tierras blancas": [-29.9392, -71.2294],
     "coquimbo": [-29.9533, -71.3436], "ovalle": [-30.6015, -71.2003], "vicuña": [-30.0319, -70.7081],
     "aeropuerto": [-29.9161, -71.1994], "la florida": [-29.9238, -71.2185], "el milagro": [-29.9333, -71.2333],
-    "serena": [-29.9027, -71.2519]
+    "serena": [-29.9027, -71.2519], "región": [-29.95, -71.3], "municipalidad": [-29.9045, -71.2489],
+    "hospital": [-29.9150, -71.2550], "ruta 5": [-29.88, -71.26], "caleta": [-29.94, -71.33]
 }
 
-# --- 5. INTELIGENCIA & MINERÍA DE DATOS ---
+# --- 5. MOTOR DE INTELIGENCIA ---
 @st.cache_resource
-def cargar_modelo():
+def cargar_cerebro():
     return pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
-def detectar_ubicacion(texto):
+def detectar_lugar(texto):
     texto = texto.lower()
     for lugar, coords in GEO_DB.items():
         if lugar in texto: return coords[0], coords[1], lugar.title()
-    # Coordenada aleatoria cerca del centro para evitar superposición
-    return -29.9027 + random.uniform(-0.03, 0.03), -71.2519 + random.uniform(-0.03, 0.03), "General"
+    # Random ligero para evitar superposición exacta en el mapa
+    return -29.9027 + random.uniform(-0.02, 0.02), -71.2519 + random.uniform(-0.02, 0.02), "La Serena (Gral)"
 
-def clasificar_fuente(link):
-    if any(x in link for x in ['twitter', 'facebook', 'instagram', 'tiktok', 'reddit']): return "Red Social"
-    return "Prensa/Web"
+def clasificar_fuente_avanzada(link, nombre):
+    link = link.lower()
+    nombre = nombre.lower()
+    
+    # Detección de Redes Sociales
+    social_kw = ['twitter', 'facebook', 'instagram', 'tiktok', 'reddit', 'x.com', 'youtube', 'linkedin']
+    if any(x in link for x in social_kw) or any(x in nombre for x in social_kw):
+        return "Red Social"
+    
+    # Detección de Prensa Local (Lista Blanca)
+    local_kw = ['eldia', 'observatodo', 'miradio', 'laserenaonline', 'region', 'semanariotiempo', 'madero']
+    if any(x in link for x in local_kw):
+        return "Prensa Regional"
+        
+    return "Prensa Nacional/Web"
 
-def generar_busqueda_profunda(objetivo, extra):
-    # ESTRATEGIA HYDRA: Multiplicar las búsquedas por sitio específico para romper el filtro de Google
+def generar_consultas_hydra(objetivo, extra):
     urls = []
     base_rss = "https://news.google.com/rss/search?q={}&hl=es-419&gl=CL&ceid=CL:es-419"
     
-    # 1. Medios Clave (Búsqueda dirigida sitio por sitio)
-    medios_norte = [
-        "diarioeldia.cl", "elobservatodo.cl", "miradiols.cl", "laserenaonline.cl", 
-        "biobiochile.cl", "emol.com", "latercera.com", "davidnoticias.cl", "limari.cl"
+    # A. MEDIOS ESPECÍFICOS (Para garantizar Top Fuentes)
+    medios = [
+        "diarioeldia.cl", "semanariotiempo.cl", "diariolaregion.cl", 
+        "elobservatodo.cl", "miradiols.cl", "biobiochile.cl", 
+        "twitter.com", "facebook.com" # Intentar forzar redes
     ]
-    
-    # Generar queries específicas: "Daniela Norambuena site:diarioeldia.cl"
-    for medio in medios_norte:
-        query = f'"{objetivo}" site:{medio}'
-        urls.append(base_rss.format(quote(query)))
+    for m in medios:
+        urls.append(base_rss.format(quote(f'"{objetivo}" site:{m}')))
         
-    # 2. Búsqueda General Amplia
-    queries_gen = [
-        f'{objetivo}',
-        f'{objetivo} La Serena',
-        f'{objetivo} Coquimbo',
-        f'{objetivo} noticias'
-    ]
-    
-    # 3. Extras
+    # B. BÚSQUEDA GENERAL
+    queries = [objetivo, f'{objetivo} La Serena', f'{objetivo} Coquimbo', f'{objetivo} denuncia', f'{objetivo} viral']
     if extra:
-        for k in extra.split(","):
-            queries_gen.append(f'{objetivo} {k.strip()}')
-            
-    for q in queries_gen:
-        urls.append(base_rss.format(quote(q)))
+        for k in extra.split(","): queries.append(f'{objetivo} {k.strip()}')
         
-    return list(set(urls)) # Eliminar duplicados
+    for q in queries: urls.append(base_rss.format(quote(q)))
+    return list(set(urls))
 
-def minar_datos(objetivo, inicio, fin, extra):
-    analizador = cargar_modelo()
-    urls = generar_busqueda_profunda(objetivo, extra)
+def escanear_red(objetivo, inicio, fin, extra):
+    analizador = cargar_cerebro()
+    urls = generar_consultas_hydra(objetivo, extra)
     resultados = []
     vistos = set()
     
-    # Barra de progreso
-    bar = st.progress(0)
-    status = st.empty()
-    
-    total_urls = len(urls)
-    
+    progreso = st.progress(0)
     for i, url in enumerate(urls):
-        status.text(f"Minando fuente {i+1} de {total_urls}...")
         try:
             feed = feedparser.parse(url)
             for item in feed.entries:
@@ -141,172 +148,247 @@ def minar_datos(objetivo, inicio, fin, extra):
                 if item.link in vistos: continue
                 vistos.add(item.link)
                 
-                # Análisis
                 pred = analizador(item.title[:512])[0]
                 score = int(pred['label'].split()[0])
                 sent = "Negativo" if score <= 2 else "Neutro" if score == 3 else "Positivo"
-                fuente = item.source.title if 'source' in item else "Web"
-                tipo = clasificar_fuente(item.link)
-                lat, lon, lugar = detectar_ubicacion(item.title)
+                
+                fuente_raw = item.source.title if 'source' in item else "Web"
+                tipo = clasificar_fuente_avanzada(item.link, fuente_raw)
+                lat, lon, lugar = detectar_lugar(item.title)
                 
                 resultados.append({
-                    'Fecha': fecha, 'Fuente': fuente, 'Titular': item.title,
+                    'Fecha': fecha, 'Fuente': fuente_raw, 'Titular': item.title,
                     'Sentimiento': sent, 'Link': item.link, 'Score': score,
                     'Tipo': tipo, 'Lat': lat, 'Lon': lon, 'Lugar': lugar, 'Manual': False
                 })
         except: pass
-        bar.progress((i + 1) / total_urls)
-        
-    status.empty()
-    bar.empty()
+        progreso.progress((i+1)/len(urls))
+    progreso.empty()
     return pd.DataFrame(resultados)
 
-# --- 6. BARRA LATERAL (ORDEN CORREGIDO) ---
+# --- 6. SIDEBAR ---
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/3208/3208726.png", width=50)
-    st.title("PANEL DE MANDO")
+    st.title("⚓ EL FARO")
+    st.caption("Intelligence Command Center")
     
-    st.header("1. Configuración de Búsqueda")
-    objetivo = st.text_input("Objetivo Principal", "Daniela Norambuena")
-    extra_kw = st.text_input("Palabras Clave Extra", placeholder="Ej: seguridad, festival, obras")
-    
+    objetivo = st.text_input("Objetivo", "Daniela Norambuena")
+    extra_kw = st.text_input("Contexto (Opcional)", "seguridad, festival")
     fechas = st.columns(2)
-    ini = fechas[0].date_input("Inicio", datetime.now() - timedelta(days=30))
+    ini = fechas[0].date_input("Inicio", datetime.now()-timedelta(days=30))
     fin = fechas[1].date_input("Fin", datetime.now())
     
-    btn_scan = st.button("🚀 EJECUTAR MINERÍA PROFUNDA")
-    
-    st.markdown("---")
-    
-    # Ingreso Manual al final
-    with st.expander("📝 Ingreso Manual de Datos"):
-        with st.form("manual"):
-            m_txt = st.text_input("Titular/Dato")
-            m_src = st.text_input("Fuente")
-            m_sen = st.selectbox("Sentimiento", ["Positivo", "Negativo"])
+    if st.button("📡 INICIAR ESCANEO"):
+        with st.spinner("Triangulando señales..."):
+            st.session_state.data_raw = escanear_red(objetivo, ini, fin, extra_kw)
+
+    st.divider()
+    with st.expander("➕ Ingreso Manual"):
+        with st.form("man"):
+            mt = st.text_input("Texto")
+            ms = st.text_input("Fuente")
+            msen = st.selectbox("Sentimiento", ["Positivo","Negativo","Neutro"])
             if st.form_submit_button("Guardar"):
-                new = {'Fecha': datetime.now().date(), 'Fuente': m_src, 'Titular': m_txt, 'Sentimiento': m_sen, 'Link':'#', 'Score':0, 'Tipo': 'Manual', 'Lat':-29.90, 'Lon':-71.25, 'Lugar':'Manual', 'Manual':True}
-                st.session_state.data_mining = pd.concat([st.session_state.data_mining, pd.DataFrame([new])], ignore_index=True)
-                st.success("Guardado")
+                row = {'Fecha':datetime.now().date(), 'Fuente':ms, 'Titular':mt, 'Sentimiento':msen, 'Link':'#', 'Score':0, 'Tipo':'Manual', 'Lat':-29.90, 'Lon':-71.25, 'Lugar':'Manual', 'Manual':True}
+                st.session_state.data_raw = pd.concat([st.session_state.data_raw, pd.DataFrame([row])], ignore_index=True)
+                st.success("OK")
 
-# --- 7. LOGICA PRINCIPAL ---
-if btn_scan:
-    st.session_state.data_mining = pd.DataFrame()
-    with st.spinner("Iniciando Motores de Búsqueda... Esto puede tomar unos segundos para maximizar resultados."):
-        df_new = minar_datos(objetivo, ini, fin, extra_kw)
-        st.session_state.data_mining = df_new
+# --- 7. LOGICA DE DATOS (EDICIÓN VIVA) ---
+# Aquí está la magia: Si hay datos, primero los mostramos para editar, LUEGO graficamos lo editado.
+df_master = st.session_state.data_raw
 
-# --- 8. DASHBOARD VISUAL ---
-df = st.session_state.data_mining
-
-if not df.empty:
+if not df_master.empty:
+    
     # --- ENCABEZADO ---
-    st.markdown(f"## 📡 Informe de Inteligencia: *{objetivo}*")
-    
-    # KPIs
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Volumen Total", len(df), delta="Datos en tiempo real")
-    k2.metric("Positivos", len(df[df.Sentimiento=='Positivo']), delta="🟢")
-    k3.metric("Negativos", len(df[df.Sentimiento=='Negativo']), delta="-🔴", delta_color="inverse")
-    k4.metric("Fuentes Únicas", df['Fuente'].nunique())
-    
+    c_logo, c_title = st.columns([1, 6])
+    with c_title:
+        st.title(f"Radar Activo: {objetivo}")
+        st.caption(f"Última actualización: {datetime.now().strftime('%H:%M:%S')}")
+
     # --- PESTAÑAS ---
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Estadísticas & Conceptos", "🗺️ Mapa Geo-Táctico", "🏆 Ranking de Fuentes", "📝 Datos Brutos"])
-    
-    # 1. ESTADÍSTICAS
-    with tab1:
-        c1, c2 = st.columns([2, 1])
+    tabs = st.tabs(["📝 GESTIÓN DE DATOS (Validar)", "📊 ESTRATEGIA 360", "🗺️ GEO-TACTICAL", "📱 FUENTES & MEDIOS", "📄 INFORME IA"])
+
+    # === TAB 1: GESTIÓN DE DATOS (PRIMERO PARA PODER EDITAR) ===
+    with tabs[0]:
+        st.info("💡 INSTRUCCIONES: Edita esta tabla. Si cambias un sentimiento o borras una fila, los gráficos de las otras pestañas se actualizarán automáticamente.")
         
-        with c1:
-            st.subheader("🕸️ Mapa Conceptual (Haz clic para explorar)")
-            # SUNBURST: Sentimiento -> Fuente -> Noticia
-            fig_sun = px.sunburst(
-                df, path=['Sentimiento', 'Fuente', 'Titular'], 
+        # EDITOR DE DATOS CRUCIAL
+        df_edited = st.data_editor(
+            df_master,
+            column_config={
+                "Link": st.column_config.LinkColumn("Link"),
+                "Sentimiento": st.column_config.SelectboxColumn("Sentimiento", options=["Positivo", "Negativo", "Neutro", "Irrelevante"]),
+                "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Prensa Regional", "Prensa Nacional/Web", "Red Social", "Manual"]),
+                "Lat": None, "Lon": None, "Score": None, "Manual": None
+            },
+            num_rows="dynamic",
+            use_container_width=True,
+            key="data_editor_main"
+        )
+        
+        # FILTRO DE BASURA (Lo que el usuario marcó como irrelevante o borró se va)
+        df_clean = df_edited[df_edited.Sentimiento != "Irrelevante"]
+
+    # === TAB 2: ESTRATEGIA 360 ===
+    with tabs[1]:
+        # KPIs
+        vol = len(df_clean)
+        pos = len(df_clean[df_clean.Sentimiento=='Positivo'])
+        neg = len(df_clean[df_clean.Sentimiento=='Negativo'])
+        
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Volumen Validado", vol)
+        k2.metric("Positivos", pos, delta="🟢")
+        k3.metric("Negativos", neg, delta="-🔴", delta_color="inverse")
+        k4.metric("Ratio de Crisis", f"{int(neg/vol*100) if vol>0 else 0}%")
+
+        st.divider()
+
+        # FILA 1: MAPA CONCEPTUAL + TERMÓMETRO
+        c_tree, c_gauge = st.columns([2, 1])
+        
+        with c_tree:
+            st.subheader("🌳 Mapa Semántico (Treemap)")
+            st.caption("Jerarquía: Lugar -> Medio -> Noticia. Haz clic para profundizar.")
+            fig_tree = px.treemap(
+                df_clean, path=[px.Constant("Ecosistema"), 'Lugar', 'Fuente', 'Titular'], 
                 color='Sentimiento',
-                color_discrete_map={'Positivo':'#00c853', 'Negativo':'#d50000', 'Neutro':'#ffab00'},
-                height=500
+                color_discrete_map={'Positivo':'#00E676', 'Negativo':'#FF1744', 'Neutro':'#FFEA00'},
+                hover_data=['Titular']
             )
-            st.plotly_chart(fig_sun, use_container_width=True)
+            fig_tree.update_layout(margin=dict(t=0, l=0, r=0, b=0), height=450, paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_tree, use_container_width=True)
             
-            st.subheader("📈 Evolución Temporal")
-            df_trend = df.groupby(['Fecha', 'Sentimiento']).size().reset_index(name='Count')
-            fig_line = px.area(df_trend, x='Fecha', y='Count', color='Sentimiento', 
-                               color_discrete_map={'Positivo':'#00c853', 'Negativo':'#d50000', 'Neutro':'#ffab00'})
-            st.plotly_chart(fig_line, use_container_width=True)
-            
-        with c2:
-            st.subheader("🚦 Termómetro de Marca")
-            # GAUGE
-            pos = len(df[df.Sentimiento=='Positivo'])
-            neg = len(df[df.Sentimiento=='Negativo'])
-            total = len(df)
-            score = ((pos * 100) + (total - neg - pos) * 50) / total if total > 0 else 0
-            
-            fig_gauge = go.Figure(go.Indicator(
-                mode = "gauge+number", value = score,
+            # TABLA DE DETALLE (Para leer lo del Treemap)
+            with st.expander("🔍 Ver Detalle de Noticias del Mapa"):
+                st.dataframe(df_clean[['Fuente', 'Titular', 'Sentimiento', 'Link']], use_container_width=True, hide_index=True)
+
+        with c_gauge:
+            st.subheader("🌡️ Termómetro")
+            score = ((pos * 100) + (vol - neg - pos) * 50) / vol if vol > 0 else 0
+            fig_g = go.Figure(go.Indicator(
+                mode = "gauge+number+delta", value = score,
+                delta = {'reference': 50},
+                title = {'text': "Reputación"},
                 gauge = {
                     'axis': {'range': [None, 100]}, 'bar': {'color': "rgba(0,0,0,0)"},
-                    'steps': [{'range': [0, 40], 'color': "#d50000"}, {'range': [40, 70], 'color': "#ffab00"}, {'range': [70, 100], 'color': "#00c853"}],
+                    'steps': [{'range': [0, 40], 'color': "#FF1744"}, {'range': [40, 60], 'color': "#FFEA00"}, {'range': [60, 100], 'color': "#00E676"}],
                     'threshold': {'line': {'color': "white", 'width': 4}, 'thickness': 0.75, 'value': score}
                 }
             ))
-            fig_gauge.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor="rgba(0,0,0,0)", font={'color':"white"})
-            st.plotly_chart(fig_gauge, use_container_width=True)
+            fig_g.update_layout(height=300, margin=dict(t=0,b=0,l=20,r=20), paper_bgcolor="rgba(0,0,0,0)", font={'color':'white'})
+            st.plotly_chart(fig_g, use_container_width=True)
             
-            st.markdown("##### ☁️ Nube Semántica")
-            wc = WordCloud(width=400, height=300, background_color='#0e1117', colormap='Wistia').generate(" ".join(df['Titular']))
-            fig_wc, ax = plt.subplots(); ax.imshow(wc); ax.axis("off"); fig_wc.patch.set_facecolor('#0e1117')
-            st.pyplot(fig_wc)
+            # Gráfico Extra: Sentimiento General
+            fig_pie = px.donut(df_clean, names='Sentimiento', color='Sentimiento', 
+                               color_discrete_map={'Positivo':'#00E676', 'Negativo':'#FF1744', 'Neutro':'#FFEA00'}, hole=0.6)
+            fig_pie.update_layout(height=200, margin=dict(t=0,b=0,l=0,r=0), paper_bgcolor="rgba(0,0,0,0)", showlegend=False)
+            st.plotly_chart(fig_pie, use_container_width=True)
 
-    # 2. MAPA (Arreglado)
-    with tab2:
-        st.subheader("📍 Mapa de Calor Regional (OpenStreetMap)")
-        # Forzar mapa base
-        m = folium.Map(location=[-29.9027, -71.2519], zoom_start=12)
-        HeatMap([[r['Lat'], r['Lon']] for i, r in df.iterrows()], radius=15).add_to(m)
-        mc = MarkerCluster().add_to(m)
-        for i, r in df.iterrows():
-            folium.Marker(
-                [r['Lat'], r['Lon']], popup=r['Titular'], 
-                icon=folium.Icon(color="green" if r['Sentimiento']=='Positivo' else "red")
-            ).add_to(mc)
-        
-        # Renderizado con ancho completo
-        st_folium(m, width="100%", height=600)
+        # FILA 2: EVOLUCIÓN
+        st.subheader("📈 Línea de Tiempo de Impacto")
+        df_time = df_clean.groupby(['Fecha', 'Sentimiento']).size().reset_index(name='Menciones')
+        fig_line = px.area(df_time, x='Fecha', y='Menciones', color='Sentimiento', 
+                           color_discrete_map={'Positivo':'#00E676', 'Negativo':'#FF1744', 'Neutro':'#FFEA00'})
+        st.plotly_chart(fig_line, use_container_width=True)
 
-    # 3. RANKING DE FUENTES (Separado)
-    with tab3:
-        c_prensa, c_social = st.columns(2)
+    # === TAB 3: GEO-TACTICAL ===
+    with tabs[2]:
+        st.subheader("📍 Mapa de Calor Territorial")
+        c_map, c_stats = st.columns([3, 1])
         
-        with c_prensa:
-            st.markdown("### 📰 Top 10 Prensa/Web")
-            prensa_df = df[df.Tipo != 'Red Social']['Fuente'].value_counts().head(10).reset_index()
-            prensa_df.columns = ['Medio', 'Menciones']
-            fig_p = px.bar(prensa_df, x='Menciones', y='Medio', orientation='h', color='Menciones', color_continuous_scale='Blues')
-            fig_p.update_layout(yaxis={'categoryorder':'total ascending'})
-            st.plotly_chart(fig_p, use_container_width=True)
-            
-        with c_social:
-            st.markdown("### 📱 Top Redes Sociales")
-            social_df = df[df.Tipo == 'Red Social']['Fuente'].value_counts().head(10).reset_index()
-            if not social_df.empty:
-                social_df.columns = ['Red', 'Menciones']
-                fig_s = px.pie(social_df, names='Red', values='Menciones', hole=0.4)
-                st.plotly_chart(fig_s, use_container_width=True)
+        with c_map:
+            # MAPA ARREGLADO: Lat/Lon limpios
+            map_data = df_clean[(df_clean.Lat != 0) & (df_clean.Lat.notna())]
+            if not map_data.empty:
+                m = folium.Map(location=[-29.9027, -71.2519], zoom_start=12, tiles="CartoDB dark_matter")
+                HeatMap([[r.Lat, r.Lon] for i, r in map_data.iterrows()], radius=15, blur=10).add_to(m)
+                mc = MarkerCluster().add_to(m)
+                for i, r in map_data.iterrows():
+                    color = "green" if r.Sentimiento=='Positivo' else "red" if r.Sentimiento=='Negativo' else "orange"
+                    folium.Marker([r.Lat, r.Lon], popup=f"{r.Fuente}: {r.Titular}", icon=folium.Icon(color=color)).add_to(mc)
+                st_folium(m, width="100%", height=600)
             else:
-                st.info("No se detectaron suficientes datos de redes sociales en esta búsqueda.")
+                st.warning("No hay datos geográficos suficientes.")
+        
+        with c_stats:
+            st.markdown("#### Top Lugares")
+            top_places = df_clean['Lugar'].value_counts().head(10)
+            st.bar_chart(top_places)
 
-    # 4. DATOS Y PDF
-    with tab4:
-        st.dataframe(df, use_container_width=True)
-        if st.button("📄 Descargar Reporte PDF"):
-            pdf = FPDF(); pdf.add_page(); pdf.set_font("Arial", size=10)
-            pdf.cell(0, 10, f"Informe Sentinel: {objetivo}", 0, 1)
-            for i, r in df.iterrows():
-                try: pdf.multi_cell(0, 5, f"[{r['Sentimiento']}] {r['Fuente']}: {r['Titular']}".encode('latin-1','replace').decode('latin-1')); pdf.ln(1)
-                except: pass
-            t = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf"); pdf.output(t.name)
-            with open(t.name, "rb") as f: st.download_button("Descargar Archivo", f, "reporte.pdf")
+    # === TAB 4: FUENTES & MEDIOS ===
+    with tabs[3]:
+        # Separación Clara
+        prensa = df_clean[df_clean['Tipo'].str.contains('Prensa')]
+        social = df_clean[df_clean['Tipo'] == 'Red Social']
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("### 📰 Top 10 Prensa")
+            if not prensa.empty:
+                # Gráfico Barras Horizontal
+                fig_p = px.bar(prensa['Fuente'].value_counts().head(10), orientation='h', color_discrete_sequence=['#0ea5e9'])
+                st.plotly_chart(fig_p, use_container_width=True)
+                
+                # Gráfico Sentimiento por Medio (Quién pega más fuerte)
+                st.markdown("#### Quién habla bien/mal")
+                fig_stack = px.histogram(prensa, y="Fuente", color="Sentimiento", barmode="stack", 
+                                         color_discrete_map={'Positivo':'#00E676', 'Negativo':'#FF1744', 'Neutro':'#FFEA00'})
+                st.plotly_chart(fig_stack, use_container_width=True)
+            else: st.info("Sin datos de prensa.")
+            
+        with c2:
+            st.markdown("### 📱 Top 10 Redes Sociales")
+            if not social.empty:
+                fig_s = px.bar(social['Fuente'].value_counts().head(10), orientation='h', color_discrete_sequence=['#d946ef'])
+                st.plotly_chart(fig_s, use_container_width=True)
+            else: 
+                st.warning("Poca data social directa. Google limita tweets individuales.")
+                st.info("Tip: Usa 'Ingreso Manual' para agregar reportes de redes específicos.")
+
+    # === TAB 5: INFORME IA ===
+    with tabs[4]:
+        st.header("🤖 Generador de Informes")
+        
+        col_gen, col_prev = st.columns([1, 2])
+        with col_gen:
+            st.markdown("Genera un análisis narrativo basado en los datos validados.")
+            if st.button("✍️ REDACTAR INFORME"):
+                # Lógica Narrativa Simple
+                top_f = df_clean['Fuente'].mode()[0] if not df_clean.empty else "N/A"
+                concl = "CRÍTICO" if neg > pos else "POSITIVO"
+                
+                informe_txt = f"""
+                INFORME DE INTELIGENCIA - EL FARO
+                =================================
+                OBJETIVO: {objetivo}
+                FECHA: {datetime.now().strftime('%d/%m/%Y')}
+                
+                1. RESUMEN DE SITUACIÓN
+                El sistema ha detectado {vol} señales relevantes. El sentimiento predominante es {('Positivo' if pos>neg else 'Negativo')}, 
+                con un índice de riesgo del {int(neg/vol*100) if vol>0 else 0}%.
+                
+                2. ANÁLISIS DE MEDIOS
+                La fuente más activa ha sido '{top_f}'. Se observa una fuerte polarización en prensa regional.
+                
+                3. CONCLUSIÓN TÉCNICA
+                El escenario actual se califica como {concl}. Se recomienda monitorear los focos en {', '.join(df_clean['Lugar'].unique()[:3])}.
+                """
+                st.session_state['informe_cache'] = informe_txt
+                
+        with col_prev:
+            if 'informe_cache' in st.session_state:
+                st.text_area("Borrador:", st.session_state['informe_cache'], height=300)
+                
+                # PDF Export
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", size=12)
+                pdf.multi_cell(0, 6, st.session_state['informe_cache'].encode('latin-1','replace').decode('latin-1'))
+                
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+                pdf.output(tmp.name)
+                with open(tmp.name, "rb") as f:
+                    st.download_button("📥 DESCARGAR PDF", f, "Informe_ElFaro.pdf")
 
 else:
-    st.info("👋 Configura tu búsqueda a la izquierda. El sistema usará minería profunda en múltiples medios locales.")
+    st.info("👋 El Faro en espera. Configura el radar a la izquierda.")
