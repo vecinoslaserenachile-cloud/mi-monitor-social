@@ -3,6 +3,6 @@ torch
 feedparser
 pandas
 openpyxl
-streamlit
+streamlit>=1.25.0
 plotly
-altair
+altair<5
