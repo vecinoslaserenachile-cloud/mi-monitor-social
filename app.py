@@ -6,173 +6,183 @@ from datetime import datetime, timedelta
 import time
 import plotly.express as px
 from urllib.parse import quote
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+import re
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="Sentinel AI Pro", layout="wide", page_icon="📡")
 
-st.title("📡 Sentinel AI: Monitor de Medios Pro")
-st.markdown("Monitor de reputación, análisis de sentimiento y escucha social.")
+# --- ESTILOS CSS PERSONALIZADOS ---
+st.markdown("""
+    <style>
+    .big-font { font-size:20px !important; }
+    .metric-card { background-color: #f0f2f6; padding: 15px; border-radius: 10px; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- BARRA LATERAL (CONTROLES) ---
-st.sidebar.header("🎛️ Panel de Control")
+st.title("📡 Sentinel AI: Monitor de Medios 360°")
+st.markdown("Inteligencia de reputación, influencers y escucha social avanzada.")
 
-# 1. INPUT DE TEMA
-tema_busqueda = st.sidebar.text_input("Tema o Persona a monitorear", "La Serena")
+# --- BARRA LATERAL ---
+st.sidebar.header("🎛️ Centro de Comando")
 
-# 2. SELECTOR DE FUENTES
-tipo_fuente = st.sidebar.radio(
-    "¿Dónde buscar?",
-    ("Todo Internet", "Solo Prensa/Noticias", "Redes Sociales (TikTok/IG/X)")
-)
+tema_busqueda = st.sidebar.text_input("Tema a monitorear", "La Serena")
+tipo_fuente = st.sidebar.radio("Fuentes", ("Todo Internet", "Solo Prensa", "Redes Sociales (Twitter/TikTok/IG)"))
 
-# 3. FILTRO DE FECHAS
-st.sidebar.subheader("📅 Rango de Fechas")
-col_fecha1, col_fecha2 = st.sidebar.columns(2)
-fecha_inicio = col_fecha1.date_input("Desde", datetime.now() - timedelta(days=7))
-fecha_fin = col_fecha2.date_input("Hasta", datetime.now())
+st.sidebar.subheader("📅 Filtro Temporal")
+col1, col2 = st.sidebar.columns(2)
+fecha_inicio = col1.date_input("Inicio", datetime.now() - timedelta(days=30))
+fecha_fin = col2.date_input("Fin", datetime.now())
 
-btn_actualizar = st.sidebar.button("🔄 Ejecutar Análisis", type="primary")
+btn_actualizar = st.sidebar.button("🚀 Ejecutar Análisis", type="primary")
 
 # --- FUNCIONES ---
 @st.cache_resource
 def cargar_modelo():
     return pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
-def construir_url_rss(tema, tipo):
-    tema_seguro = quote(tema)
-    
-    # Truco Legal: Usamos "Google Dorks" (site:...) para buscar dentro de las redes
-    if tipo == "Redes Sociales (TikTok/IG/X)":
-        # AQUI AGREGAMOS TIKTOK
-        query = f"{tema_seguro} site:twitter.com OR site:x.com OR site:facebook.com OR site:instagram.com OR site:tiktok.com OR site:reddit.com"
-    elif tipo == "Solo Prensa/Noticias":
-        query = f"{tema_seguro} when:7d" # Prioriza noticias recientes
+def limpiar_texto(texto):
+    # Limpieza básica para la nube de palabras
+    texto = re.sub(r'http\S+', '', texto) # Quitar links
+    texto = re.sub(r'[^\w\s]', '', texto) # Quitar signos raros
+    return texto
+
+def construir_url(tema, tipo):
+    # LÓGICA CORREGIDA PARA EVITAR EL ERROR InvalidURL
+    # Primero construimos la frase completa en texto plano
+    if tipo == "Redes Sociales (Twitter/TikTok/IG)":
+        query_raw = f"{tema} site:twitter.com OR site:facebook.com OR site:instagram.com OR site:tiktok.com OR site:reddit.com"
+    elif tipo == "Solo Prensa":
+        query_raw = f"{tema} when:14d"
     else:
-        query = tema_seguro
-
-    return f"https://news.google.com/rss/search?q={query}&hl=es-419&gl=CL&ceid=CL:es-419"
-
-def convertir_fecha(struct_time):
-    # Convierte la fecha rara del RSS a una fecha normal
-    if struct_time:
-        return datetime.fromtimestamp(time.mktime(struct_time)).date()
-    return datetime.now().date()
-
-def analizar_noticias(tema, tipo, f_inicio, f_fin):
-    analizador = cargar_modelo()
-    url = construir_url_rss(tema, tipo)
+        query_raw = tema
     
+    # Luego codificamos TODO para que sea seguro para internet
+    query_encoded = quote(query_raw)
+    
+    return f"https://news.google.com/rss/search?q={query_encoded}&hl=es-419&gl=CL&ceid=CL:es-419"
+
+def analizar_datos(tema, tipo, f_inicio, f_fin):
+    analizador = cargar_modelo()
+    url = construir_url(tema, tipo)
     noticias = feedparser.parse(url)
-    resultados = []
+    
+    datos = []
     
     if not noticias.entries:
         return pd.DataFrame()
 
-    barra = st.progress(0)
-    total_items = len(noticias.entries)
+    progreso = st.progress(0)
+    total = len(noticias.entries)
     
-    for i, noticia in enumerate(noticias.entries):
-        # CORRECCIÓN AQUÍ: Usamos el nombre correcto de la función
-        fecha_noticia = convertir_fecha(noticia.published_parsed)
-        
-        # Filtro de fecha
-        if not (f_inicio <= fecha_noticia <= f_fin):
-            continue
-
-        titulo = noticia.title
-        link = noticia.link
-        
+    for i, item in enumerate(noticias.entries):
+        # Fecha
         try:
-            # Análisis IA (cortamos texto largo para no saturar)
+            fecha_obj = datetime.fromtimestamp(time.mktime(item.published_parsed)).date()
+        except:
+            fecha_obj = datetime.now().date()
+            
+        if not (f_inicio <= fecha_obj <= f_fin):
+            continue
+            
+        # IA Sentimiento
+        titulo = item.title
+        try:
             pred = analizador(titulo[:512])[0]
             score = int(pred['label'].split()[0])
             
-            if score <= 2:
-                sent = "Negativo"
-                color = "🔴"
-            elif score == 3:
-                sent = "Neutro"
-                color = "🟡"
-            else:
-                sent = "Positivo"
-                color = "🟢"
+            if score <= 2: 
+                sent, color = "Negativo", "🔴"
+            elif score == 3: 
+                sent, color = "Neutro", "🟡"
+            else: 
+                sent, color = "Positivo", "🟢"
                 
-            resultados.append({
-                "Fecha": fecha_noticia,
-                "Fuente": noticia.source.title if 'source' in noticia else "Web",
+            # Identificar Fuente (Limpiamos el nombre)
+            fuente_raw = item.source.title if 'source' in item else "Web Desconocida"
+            
+            datos.append({
+                "Fecha": fecha_obj,
+                "Fuente": fuente_raw,
                 "Titular": titulo,
                 "Sentimiento": sent,
-                "Icono": color,
-                "Score": score,
-                "Link": link
+                "Color": color,
+                "Link": item.link,
+                "Score": score
             })
-        except Exception as e:
+        except:
             pass
         
-        if total_items > 0:
-            barra.progress((i + 1) / total_items)
-            
-    barra.empty()
-    return pd.DataFrame(resultados)
+        progreso.progress((i + 1) / total)
+        
+    progreso.empty()
+    return pd.DataFrame(datos)
 
-# --- INTERFAZ PRINCIPAL ---
-
+# --- VISUALIZACIÓN ---
 if btn_actualizar:
-    st.markdown(f"### 🔎 Analizando: *{tema_busqueda}*")
-    st.caption(f"Buscando en: {tipo_fuente} | Desde: {fecha_inicio} Hasta: {fecha_fin}")
-    
-    with st.spinner('Escaneando TikTok, Instagram, X y Prensa...'):
-        df = analizar_noticias(tema_busqueda, tipo_fuente, fecha_inicio, fecha_fin)
+    with st.spinner(f"Escaneando ecosistema digital sobre '{tema_busqueda}'..."):
+        df = analizar_datos(tema_busqueda, tipo_fuente, fecha_inicio, fecha_fin)
         
     if not df.empty:
-        # MÉTRICAS
-        col1, col2, col3, col4 = st.columns(4)
-        positivos = len(df[df['Sentimiento'] == 'Positivo'])
-        negativos = len(df[df['Sentimiento'] == 'Negativo'])
-        neutros = len(df[df['Sentimiento'] == 'Neutro'])
+        # 1. KPIs Principales
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        kpi1.metric("Menciones Totales", len(df))
+        kpi2.metric("Positivas", len(df[df.Sentimiento=='Positivo']), delta="🟢")
+        kpi3.metric("Negativas", len(df[df.Sentimiento=='Negativo']), delta="-🔴", delta_color="inverse")
         
-        col1.metric("Total Hallazgos", len(df))
-        col2.metric("Positivos", positivos, delta="🟢")
-        col3.metric("Negativos", negativos, delta="🔴", delta_color="inverse")
-        col4.metric("Neutros", neutros, delta="🟡", delta_color="off")
+        # Fuente principal
+        top_fuente = df['Fuente'].mode()[0] if not df.empty else "N/A"
+        kpi4.metric("Fuente Top", top_fuente, "Más activa")
         
         st.divider()
-
-        # GRÁFICOS
-        c1, c2 = st.columns([1, 1])
+        
+        # 2. ANÁLISIS DE FUENTES Y SENTIMIENTO (FILA 1)
+        c1, c2 = st.columns(2)
         
         with c1:
-            st.subheader("📊 Sentimiento General")
-            fig_torta = px.pie(df, names='Sentimiento', 
-                               color='Sentimiento',
-                               color_discrete_map={'Positivo':'#2ECC71', 'Negativo':'#E74C3C', 'Neutro':'#F1C40F'},
-                               hole=0.4)
-            st.plotly_chart(fig_torta, use_container_width=True)
+            st.subheader("📢 ¿Quién está hablando?")
+            # Gráfico de torta de Fuentes
+            fig_fuentes = px.pie(df, names='Fuente', title='Share of Voice (Participación por Medio)', hole=0.3)
+            st.plotly_chart(fig_fuentes, use_container_width=True)
             
         with c2:
-            st.subheader("📈 Evolución Temporal")
-            df_trend = df.groupby(['Fecha', 'Sentimiento']).size().reset_index(name='Cantidad')
-            if not df_trend.empty:
-                fig_linea = px.bar(df_trend, x='Fecha', y='Cantidad', color='Sentimiento',
-                                    color_discrete_map={'Positivo':'#2ECC71', 'Negativo':'#E74C3C', 'Neutro':'#F1C40F'})
-                st.plotly_chart(fig_linea, use_container_width=True)
-            else:
-                st.info("No hay suficientes datos para ver la evolución.")
+            st.subheader("❤️ Salud de Marca")
+            fig_sent = px.bar(df, x='Sentimiento', color='Sentimiento', 
+                              color_discrete_map={'Positivo':'#2ecc71', 'Negativo':'#e74c3c', 'Neutro':'#f1c40f'},
+                              title="Volumen por Sentimiento")
+            st.plotly_chart(fig_sent, use_container_width=True)
 
-        st.subheader("📰 Últimos Titulares Detectados")
+        # 3. NUBE DE PALABRAS Y RANKING (FILA 2)
+        c3, c4 = st.columns([2, 1])
         
-        for index, row in df.iterrows():
-            with st.container():
-                col_icono, col_texto = st.columns([1, 10])
-                with col_icono:
-                    st.markdown(f"## {row['Icono']}")
-                with col_texto:
-                    st.markdown(f"**[{row['Titular']}]({row['Link']})**")
-                    st.caption(f"📅 {row['Fecha']} | 🏢 {row['Fuente']} | ⭐ IA: {row['Score']}/5")
-                st.divider()
+        with c3:
+            st.subheader("☁️ Temas Candentes (WordCloud)")
+            text_combined = " ".join(titulo for titulo in df.Titular)
+            wordcloud = WordCloud(width=800, height=400, background_color='white', colormap='viridis').generate(text_combined)
             
-    else:
-        st.warning("No se encontraron resultados en ese rango de fechas. Intenta ampliar el rango (ej: busca desde el mes pasado).")
+            fig, ax = plt.subplots()
+            ax.imshow(wordcloud, interpolation='bilinear')
+            ax.axis("off")
+            st.pyplot(fig)
+            
+        with c4:
+            st.subheader("🏆 Top Influenciadores")
+            # Tabla simple de quién publica más
+            ranking = df['Fuente'].value_counts().reset_index()
+            ranking.columns = ['Medio/Red', 'Menciones']
+            st.dataframe(ranking, hide_index=True, use_container_width=True)
 
+        # 4. TABLA DETALLADA
+        st.subheader("🗞️ Monitor en Tiempo Real")
+        for index, row in df.iterrows():
+            with st.expander(f"{row['Color']} {row['Fuente']}: {row['Titular']}"):
+                st.write(f"**Fecha:** {row['Fecha']}")
+                st.write(f"**Análisis IA:** {row['Score']}/5")
+                st.markdown(f"[Leer noticia original]({row['Link']})")
+
+    else:
+        st.warning("No encontramos resultados. Prueba ampliar las fechas.")
+        
 else:
-    st.info("👈 Selecciona 'Redes Sociales' en el menú para buscar en TikTok, Instagram y X.")
+    st.info("👈 Configura los parámetros y pulsa 'Ejecutar Análisis'")
