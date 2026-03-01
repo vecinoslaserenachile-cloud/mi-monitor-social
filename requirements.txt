@@ -1,8 +1,11 @@
+streamlit>=1.25.0
 transformers
 torch
 feedparser
 pandas
 openpyxl
-streamlit>=1.25.0
 plotly
 altair<5
+sentencepiece
+numpy<2
+tf-keras
