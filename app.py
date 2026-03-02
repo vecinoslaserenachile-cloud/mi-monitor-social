@@ -18,36 +18,36 @@ import random
 import io
 
 # --- 1. CONFIGURACIÓN ---
-st.set_page_config(page_title="El Faro | Sentinel Intelligence", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="El Faro | Professional Intelligence", layout="wide", page_icon="⚓")
 
-# --- 2. ESTILOS PRO & ILUSTRACIÓN FARO ---
-st.markdown("""
-    <style>
-    .main { background: #020617; color: #f8fafc; }
-    h1 { background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; }
-    
-    /* Animación Faro Realista */
-    .lighthouse-wrap { position: relative; width: 100%; text-align: center; padding: 20px; }
-    .lighthouse { font-size: 60px; filter: drop-shadow(0 0 10px #38bdf8); }
-    .light-beam {
-        position: absolute; top: 30px; left: 50%; width: 200px; height: 100px;
-        background: conic-gradient(from 0deg at 0% 50%, rgba(56,189,248,0.5) 0deg, transparent 60deg);
-        transform-origin: 0% 50%; animation: rotateBeam 4s linear infinite;
-    }
-    @keyframes rotateBeam { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-    /* KPIs ALTO CONTRASTE */
-    div[data-testid="stMetric"] { background: #1e293b; border: 2px solid #38bdf8; border-radius: 15px; padding: 20px; }
-    div[data-testid="stMetricValue"] { color: #ffffff !important; font-size: 35px !important; }
-    div[data-testid="stMetricLabel"] { color: #38bdf8 !important; font-weight: bold; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- 3. PERSISTENCIA ---
+# --- 2. INICIALIZACIÓN DE VARIABLES (Evita NameError) ---
 if 'data_master' not in st.session_state: st.session_state.data_master = pd.DataFrame()
 if 'proyectos' not in st.session_state: st.session_state.proyectos = {}
+if 'search_speed' not in st.session_state: st.session_state.search_speed = 8
 
-# --- 4. GEODATA LA SERENA/COQUIMBO ---
+# --- 3. ESTILOS PRO & ANIMACIÓN FARO (Full Screen) ---
+st.markdown(f"""
+    <style>
+    .main {{ background: #020617; color: #f8fafc; }}
+    h1 {{ background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; }}
+    
+    /* Fondo con haz de luz de Faro */
+    .lighthouse-beam {{
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: conic-gradient(from 0deg at 50% 50%, rgba(56,189,248,0.1) 0deg, transparent 40deg);
+        z-index: -1; pointer-events: none;
+        animation: rotateBeam {st.session_state.search_speed}s linear infinite;
+    }}
+    @keyframes rotateBeam {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
+
+    div[data-testid="stMetric"] {{ background: #1e293b; border: 2px solid #38bdf8; border-radius: 15px; padding: 20px; }}
+    div[data-testid="stMetricValue"] {{ color: #ffffff !important; font-size: 35px !important; }}
+    div[data-testid="stMetricLabel"] {{ color: #38bdf8 !important; font-weight: bold; }}
+    </style>
+    <div class="lighthouse-beam"></div>
+    """, unsafe_allow_html=True)
+
+# --- 4. GEODATA ---
 GEO_DB = {
     "avenida del mar": [-29.9168, -71.2785], "faro": [-29.9073, -71.2847], "centro": [-29.9027, -71.2519],
     "plaza de armas": [-29.9027, -71.2519], "las compañías": [-29.8783, -71.2389], "tierras blancas": [-29.9392, -71.2294],
@@ -55,32 +55,30 @@ GEO_DB = {
     "municipalidad": [-29.9045, -71.2489], "el milagro": [-29.9333, -71.2333]
 }
 
-# --- 5. MOTOR SENTINEL (DEEP HYDRA) ---
+# --- 5. MOTOR SENTINEL (SUPER-HYDRA SCANNER) ---
 @st.cache_resource
 def cargar_ia():
     return pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
-def clasificar_redes(link):
-    l = link.lower()
-    redes = ['tiktok', 'reddit', 'threads', 'instagram', 'facebook', 'x.com', 'twitter', 'youtube']
-    for r in redes:
-        if r in l: return "Red Social"
-    return "Prensa/Medios"
-
-def mineria_profunda(obj, ini, fin, extra):
+def mineria_profunda_enterprise(obj, ini, fin, extra):
+    st.session_state.search_speed = 2 # Acelerar faro
     ia = cargar_ia()
-    # ESTRATEGIA HYDRA: Triangulación de Redes + Prensa
-    targets = [
-        "diarioeldia.cl", "semanariotiempo.cl", "elobservatodo.cl", "miradiols.cl", "diariolaregion.cl",
-        "tiktok.com", "reddit.com", "threads.net", "instagram.com", "twitter.com"
-    ]
+    
+    # ESTRATEGIA SUPER-HYDRA: Búsqueda granular para maximizar resultados
+    modificadores = ["noticias", "alcaldesa", "municipalidad", "gestión", "opinión", "crítica", "polémica", "aprobación"]
+    social_networks = ["tiktok.com", "reddit.com", "threads.net", "instagram.com", "facebook.com", "twitter.com"]
+    medios_locales = ["diarioeldia.cl", "semanariotiempo.cl", "elobservatodo.cl", "miradiols.cl", "diariolaregion.cl"]
     
     urls = [f"https://news.google.com/rss/search?q={quote(obj)}&hl=es-419&gl=CL&ceid=CL:es-419"]
-    for t in targets:
-        urls.append(f"https://news.google.com/rss/search?q={quote(f'site:{t} {obj}')}&hl=es-419&gl=CL&ceid=CL:es-419")
-    
+    for m in modificadores:
+        urls.append(f"https://news.google.com/rss/search?q={quote(f'{obj} {m}')}&hl=es-419&gl=CL&ceid=CL:es-419")
+    for s in social_networks:
+        urls.append(f"https://news.google.com/rss/search?q={quote(f'site:{s} {obj}')}&hl=es-419&gl=CL&ceid=CL:es-419")
+    for l in medios_locales:
+        urls.append(f"https://news.google.com/rss/search?q={quote(f'site:{l} {obj}')}&hl=es-419&gl=CL&ceid=CL:es-419")
+
     res = []
-    vistos = set() # Solo eliminamos si el LINK es idéntico. Fuentes distintas con misma nota se mantienen.
+    vistos = set()
     prog = st.progress(0)
     
     for i, u in enumerate(urls):
@@ -102,43 +100,37 @@ def mineria_profunda(obj, ini, fin, extra):
                 if k in t_low: lat, lon, lug = v[0], v[1], k.title(); break
             
             res.append({
-                'Fecha': f_dt, 'Fuente': entry.source.title if 'source' in entry else "Digital",
+                'Fecha': f_dt, 'Fuente': entry.source.title if 'source' in entry else "Social/Web",
                 'Titular': entry.title, 'Sentimiento': sent, 'Link': entry.link,
-                'Tipo': clasificar_redes(entry.link), 'Lat': lat, 'Lon': lon, 'Lugar': lug, 'Etiqueta': obj
+                'Lat': lat, 'Lon': lon, 'Lugar': lug, 'Etiqueta': obj
             })
         prog.progress((i+1)/len(urls))
-    prog.empty()
+    
+    st.session_state.search_speed = 8 # Ralentizar faro
     return pd.DataFrame(res)
 
 # --- 6. SIDEBAR ---
 with st.sidebar:
-    st.markdown("""<div class='lighthouse-wrap'><div class='light-beam'></div><div class='lighthouse'>⚓</div></div>""", unsafe_allow_html=True)
-    st.title("EL FARO")
+    st.markdown("## ⚓ EL FARO")
+    st.caption("v19.0 Enterprise")
     
-    with st.expander("💾 Mis Proyectos"):
+    # PROYECTOS (Arriba para visibilidad)
+    with st.expander("💾 Gestión de Proyectos"):
         p_name = st.text_input("Nombre Proyecto")
-        if st.button("Guardar"):
-            st.session_state.proyectos[p_name] = {"obj": obj_main, "extra": ext_kw, "ini": f_ini, "fin": f_fin}
-            st.success("Guardado")
+        # Los botones de guardar están al final para evitar NameError
         if st.session_state.proyectos:
             p_sel = st.selectbox("Cargar", list(st.session_state.proyectos.keys()))
-            if st.button("Cargar"): st.info(f"Cargado {p_sel}. Pulse ENCENDER.")
+            if st.button("Cargar"): st.info(f"Cargado. Pulse ESCANEAR.")
 
     st.divider()
-    modo = st.radio("Modo", ["Individual", "Versus"])
     obj_main = st.text_input("Objetivo", "Daniela Norambuena")
-    obj_vs = st.text_input("Contra", "") if modo == "Versus" else None
-    ext_kw = st.text_input("Extra", "seguridad, obras")
+    ext_kw = st.text_input("Palabras Clave Extra", "seguridad, festival")
     c1, c2 = st.columns(2)
-    f_ini, f_fin = c1.date_input("Desde", datetime.now()-timedelta(days=30)), c2.date_input("Hasta", datetime.now())
+    f_ini, f_fin = c1.date_input("Inicio", datetime.now()-timedelta(days=30)), c2.date_input("Fin", datetime.now())
     
     if st.button("🔥 ENCENDER EL FARO"):
-        with st.spinner("Minando redes y prensa regional..."):
-            df_a = mineria_profunda(obj_main, f_ini, f_fin, ext_kw)
-            st.session_state.data_master = df_a
-            if modo == "Versus" and obj_vs:
-                df_b = mineria_profunda(obj_vs, f_ini, f_fin, ext_kw)
-                st.session_state.data_master = pd.concat([df_a, df_b], ignore_index=True)
+        with st.spinner("Rastreando red..."):
+            st.session_state.data_master = mineria_profunda_enterprise(obj_main, f_ini, f_fin, ext_kw)
 
 # --- 7. PANEL DE CONTROL ---
 df = st.session_state.data_master
@@ -156,6 +148,8 @@ if not df.empty:
         with col_l:
             fig = px.sunburst(df, path=['Sentimiento', 'Fuente', 'Titular'], color='Sentimiento', 
                               color_discrete_map={'Positivo':'#10b981', 'Negativo':'#ef4444', 'Neutro':'#f59e0b'})
+            # MEJORA DE LECTURA: Forzar tamaño de texto
+            fig.update_traces(textinfo="label+percent entry")
             fig.update_layout(height=600, paper_bgcolor="rgba(0,0,0,0)", font_color="white")
             st.plotly_chart(fig, use_container_width=True)
             
@@ -163,52 +157,56 @@ if not df.empty:
             st.subheader("🌡️ Reputación")
             pos, neg, tot = len(df[df.Sentimiento=='Positivo']), len(df[df.Sentimiento=='Negativo']), len(df)
             val = ((pos*100)+(tot-neg-pos)*50)/tot if tot > 0 else 0
-            fig_g = go.Figure(go.Indicator(mode="gauge+number", value=val, gauge={'axis':{'range':[0,100], 'tickcolor':"white"}, 'bar':{'color':"#38bdf8"},
-                                                                         'steps':[{'range':[0,40],'color':'#ef4444'},{'range':[40,60],'color':'#f59e0b'},{'range':[60,100],'color':'#10b981'}]}))
-            fig_g.update_layout(height=350, paper_bgcolor="rgba(0,0,0,0)", font_color="white")
+            fig_g = go.Figure(go.Indicator(mode="gauge+number", value=val, gauge={'axis':{'range':[0,100]}, 'steps':[{'range':[0,40],'color':'#ef4444'},{'range':[60,100],'color':'#10b981'}]}))
+            fig_g.update_layout(height=350, paper_bgcolor="rgba(0,0,0,0)", font={'color':'white'})
             st.plotly_chart(fig_g, use_container_width=True)
 
-        st.subheader("🌳 Clima por Zona")
+        st.subheader("🌳 Clima por Zona (Treemap)")
         fig_tree = px.treemap(df, path=['Lugar', 'Fuente', 'Titular'], color='Sentimiento', 
                               color_discrete_map={'Positivo':'#10b981', 'Negativo':'#ef4444', 'Neutro':'#f59e0b'})
-        fig_tree.update_traces(textinfo="label+value", textfont=dict(size=20))
+        # MEJORA DE LECTURA: Fuente grande
+        fig_tree.update_traces(textinfo="label+value", textfont=dict(size=18))
         st.plotly_chart(fig_tree, use_container_width=True)
 
     with tabs[1]:
         m = folium.Map(location=[-29.9027, -71.2519], zoom_start=12, tiles="CartoDB dark_matter")
         for _, r in df.iterrows():
             c = "green" if r.Sentimiento=='Positivo' else "red" if r.Sentimiento=='Negativo' else "orange"
-            folium.Marker([r.Lat, r.Lon], popup=f"<a href='{r.Link}' target='_blank'>{r.Fuente}</a>", icon=folium.Icon(color=c)).add_to(m)
+            folium.Marker([r.Lat, r.Lon], popup=f"<a href='{r.Link}' target='_blank'>{r.Fuente}</a>").add_to(m)
         st_folium(m, width="100%", height=600)
 
     with tabs[2]:
-        st.subheader("Validación Humana (Edita Sentimientos)")
-        df_edit = st.data_editor(df, column_config={"Link": st.column_config.LinkColumn("Ver"), "Sentimiento": st.column_config.SelectboxColumn("Sentimiento", options=["Positivo","Negativo","Neutro","Irrelevante"])}, use_container_width=True, key="editor_v18")
-        st.session_state.data_master = df_edit
+        st.subheader("Validación de Datos (Edición Permanente)")
+        df_edit = st.data_editor(df, column_config={"Link": st.column_config.LinkColumn("Ver"), "Sentimiento": st.column_config.SelectboxColumn("Sentimiento", options=["Positivo","Negativo","Neutro","Irrelevante"])}, use_container_width=True)
+        if st.button("💾 SINCRONIZAR Y GUARDAR CAMBIOS"):
+            st.session_state.data_master = df_edit
+            st.success("Base de datos actualizada.")
 
     with tabs[3]:
-        if st.button("✍️ GENERAR INFORME ESTRATÉGICO"):
+        if st.button("✍️ GENERAR INFORME ESTRATÉGICO PROFESIONAL"):
             p_perc = int(pos/tot*100) if tot>0 else 0
+            # INFORME TÉCNICO PROFESIONAL
             txt_ia = f"""
-            INFORME DE INTELIGENCIA EL FARO - ESTRATEGIA DIGITAL
+            INFORME TÉCNICO DE INTELIGENCIA ESTRATÉGICA - EL FARO
             ====================================================
             OBJETIVO: {obj_main.upper()}
-            RANGO ANALIZADO: {f_ini} al {f_fin}
+            RANGO TEMPORAL: {f_ini} al {f_fin}
             
-            ANÁLISIS NARRATIVO:
-            Durante el ciclo analizado, el motor Sentinel ha capturado un volumen de {tot} menciones. El clima de opinión es predominantemente {('Positivo' if pos>neg else 'Negativo')}, 
-            presentando una favorabilidad del {p_perc}%. Se ha detectado una intensa actividad en la fuente '{df['Fuente'].mode()[0]}'.
+            1. ANÁLISIS CUANTITATIVO DE REPUTACIÓN:
+            Se ha procesado un volumen crítico de {tot} impactos mediáticos. El ecosistema digital muestra un Índice de Favorabilidad del {p_perc}%, 
+            identificando a '{df['Fuente'].mode()[0]}' como el emisor de mayor tracción informativa.
             
-            FOCOS TERRITORIALES:
-            La conversación gira principalmente sobre {df['Lugar'].mode()[0]}, donde los conceptos de {ext_kw} han generado mayor tracción. 
-            Es imperativo monitorear los focos críticos detectados en redes sociales para prevenir escaladas.
+            2. DIAGNÓSTICO SEMÁNTICO Y TERRITORIAL:
+            La conversación predominante gravita sobre el sector {df['Lugar'].mode()[0]}. Los conceptos de '{ext_kw}' han actuado como 
+            disparadores de visibilidad, observándose una correlación directa entre la prensa regional y la opinión social en plataformas digitales.
             
-            RECOMENDACIÓN:
-            {'Mantener la línea comunicacional actual.' if p_perc > 50 else 'Activar protocolo de respuesta en prensa regional y mitigar comentarios en TikTok/Reddit.'}
+            3. RIESGOS Y RECOMENDACIONES ESTRATÉGICAS:
+            {('Se detecta una zona de confort. Se recomienda capitalizar el discurso positivo para blindar la imagen institucional.' if p_perc > 50 else 'ALERTA: Se detecta un foco de negatividad activo. Se recomienda activar protocolo de respuesta rápida en medios locales y monitorización de tendencias en redes sociales.')}
+            Es imperativo fortalecer la vinculación con los focos geográficos detectados para mitigar la polarización detectada en el mapa conceptual.
             
-            Informe generado por Sentinel Engine v18.0.
+            Generado por Sentinel Engine v19.0.
             """
-            st.text_area("Borrador:", txt_ia, height=400)
+            st.text_area("Análisis Estratégico:", txt_ia, height=450)
             
             # Gráfico para PDF
             fig_p, ax = plt.subplots(figsize=(6,4))
@@ -217,7 +215,7 @@ if not df.empty:
             buf = io.BytesIO(); plt.savefig(buf, format='png'); buf.seek(0)
 
             pdf = FPDF()
-            pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "REPORTE EL FARO", 0, 1, 'C')
+            pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "REPORTE DE INTELIGENCIA - EL FARO", 0, 1, 'C')
             pdf.set_font("Arial", size=10); pdf.cell(0, 10, f"Rango: {f_ini} - {f_fin}", 0, 1, 'C')
             pdf.ln(10); pdf.set_font("Arial", size=11); pdf.multi_cell(0, 8, txt_ia.encode('latin-1','replace').decode('latin-1'))
             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f_img:
@@ -225,6 +223,11 @@ if not df.empty:
             
             tmp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
             pdf.output(tmp_pdf.name)
-            with open(tmp_pdf.name, "rb") as f: st.download_button("📥 BAJAR PDF", f, "Informe_Faro_Titan.pdf")
-else:
-    st.info("👋 Pulse ENCENDER EL FARO para iniciar el escaneo profundo.")
+            with open(tmp_pdf.name, "rb") as f: st.download_button("📥 DESCARGAR INFORME TÉCNICO", f, "Informe_Faro_Enterprise.pdf")
+
+# LOGICA DE GUARDADO AL FINAL (Evita NameError)
+with st.sidebar:
+    if st.button("💾 Confirmar Guardado de Proyecto"):
+        if p_name:
+            st.session_state.proyectos[p_name] = {"obj": obj_main, "extra": ext_kw, "ini": f_ini, "fin": f_fin}
+            st.success(f"Proyecto '{p_name}' guardado en memoria.")
