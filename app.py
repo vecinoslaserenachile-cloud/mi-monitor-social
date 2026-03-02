@@ -18,15 +18,15 @@ import random
 import io
 
 # --- 1. CONFIGURACIÓN ---
-st.set_page_config(page_title="Sentinel Omni-Pro", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="Sentinel Ultimate", layout="wide", page_icon="⚓")
 
 # --- 2. MEMORIA DE DATOS ---
 if 'data_master' not in st.session_state: st.session_state.data_master = pd.DataFrame()
 if 'proyectos' not in st.session_state: st.session_state.proyectos = {}
 if 'search_active' not in st.session_state: st.session_state.search_active = False
 
-# --- 3. ESTILOS PRO & FARO RESTAURADO ---
-# Velocidad de rotación: Rápida al buscar, Lenta en reposo
+# --- 3. ESTILOS PRO & FARO AISLADO (NO FLASH) ---
+# Velocidad de rotación
 speed = "2s" if st.session_state.search_active else "15s"
 
 st.markdown(f"""
@@ -35,12 +35,15 @@ st.markdown(f"""
     @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&display=swap');
     .main {{ background-color: #0B0E14 !important; color: #E2E8F0 !important; font-family: 'Manrope', sans-serif; }}
     
-    /* ANIMACIÓN DEL FARO (LA ORIGINAL RESTAURADA) */
+    /* ANIMACIÓN DEL FARO (AISLADA QUIRÚRGICAMENTE) */
     .lighthouse-container {{
         position: relative; width: 100%; height: 180px; 
         display: flex; justify-content: center; align-items: flex-end;
         background: radial-gradient(circle at bottom, #1e293b 0%, transparent 70%);
-        margin-bottom: 20px; overflow: hidden; border-bottom: 1px solid #38bdf8;
+        margin-bottom: 20px; 
+        overflow: hidden; /* CRÍTICO: Corta la luz para que no salga del cuadro */
+        border-bottom: 1px solid #38bdf8;
+        transform: translateZ(0); /* CRÍTICO: Fuerza GPU para evitar repintado del mapa */
     }}
     .lighthouse-svg {{ width: 70px; height: 120px; z-index: 10; position: relative; filter: drop-shadow(0 0 10px #38bdf8); }}
     .beam {{
@@ -48,6 +51,7 @@ st.markdown(f"""
         background: conic-gradient(from 0deg at 50% 50%, rgba(56,189,248,0.4) 0deg, transparent 60deg);
         transform-origin: 50% 50%; margin-left: -300px; margin-bottom: -300px;
         animation: rotateBeam {speed} linear infinite; pointer-events: none; z-index: 1;
+        will-change: transform; /* Optimización para evitar parpadeo */
     }}
     @keyframes rotateBeam {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
 
@@ -58,11 +62,11 @@ st.markdown(f"""
         border-radius: 8px !important; padding: 15px !important;
         box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }}
-    div[data-testid="stMetricLabel"] {{ color: #94A3B8 !important; font-weight: 700; font-size: 13px; text-transform: uppercase; }}
-    div[data-testid="stMetricValue"] {{ color: #F8FAFC !important; font-weight: 800; font-size: 38px; }}
+    div[data-testid="stMetricLabel"] {{ color: #ffffff !important; font-weight: 700 !important; font-size: 14px; text-transform: uppercase; }}
+    div[data-testid="stMetricValue"] {{ color: #38bdf8 !important; font-weight: 900 !important; font-size: 40px; }}
 
     /* TABS */
-    .stTabs [aria-selected="true"] {{ background-color: #6366F1 !important; color: white !important; }}
+    .stTabs [aria-selected="true"] {{ background-color: #6366F1 !important; color: white !important; font-weight: bold; }}
     
     /* TEXTO BLANCO */
     h1, h2, h3 {{ color: white !important; }}
@@ -76,13 +80,12 @@ def load_engine():
 
 def classify_emotion_forced(text, sentiment):
     t = text.lower()
-    # Diccionario Extenso
     if any(x in t for x in ['robo', 'delito', 'muerte', 'asesinato', 'miedo', 'terror']): return "Miedo"
     if any(x in t for x in ['mentira', 'falla', 'error', 'vergüenza', 'odio', 'indignante']): return "Ira"
     if any(x in t for x in ['feliz', 'éxito', 'avance', 'logro', 'bueno', 'gracias']): return "Alegría"
     if any(x in t for x in ['triste', 'lamentable', 'pena', 'dolor', 'luto']): return "Tristeza"
     
-    # Fallback Inteligente si no detecta keywords
+    # Fallback Inteligente
     if sentiment == "Positivo": return "Confianza"
     if sentiment == "Negativo": return "Disgusto"
     return "Expectativa"
@@ -94,14 +97,13 @@ def get_brand_metrics(fuente, sent):
     elif 'social' in fuente: base = 5000
     
     reach = int(base * random.uniform(0.5, 1.5))
-    inter = int(reach * (0.03 if sent == 'Positivo' else 0.06)) # Negativo genera más ruido
+    inter = int(reach * (0.03 if sent == 'Positivo' else 0.06)) 
     return reach, inter
 
 def run_scan(obj, ini, fin):
     st.session_state.search_active = True
     ia = load_engine()
     
-    # 35 Frentes de Rastreo
     urls = [f"https://news.google.com/rss/search?q={quote(obj)}&hl=es-419&gl=CL&ceid=CL:es-419"]
     variations = ["noticias", "polémica", "gestión", "seguridad", "denuncia", "municipalidad"]
     sites = ["diarioeldia.cl", "semanariotiempo.cl", "elobservatodo.cl", "miradiols.cl", "tiktok.com", "reddit.com", "instagram.com", "facebook.com"]
@@ -146,7 +148,7 @@ def run_scan(obj, ini, fin):
 
 # --- 5. SIDEBAR ---
 with st.sidebar:
-    # EL FARO SVG ANIMADO (RESTAURADO)
+    # EL FARO SVG ANIMADO (AISLADO)
     st.markdown("""
         <div class="lighthouse-container">
             <div class="beam"></div>
@@ -160,7 +162,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     st.title("EL FARO")
-    st.caption("Sentinel Omni-Pro v33.0")
+    st.caption("Sentinel Ultimate v34.0")
     
     obj_in = st.text_input("Objetivo", "Daniela Norambuena")
     ini = st.date_input("Inicio", datetime.now()-timedelta(days=30))
@@ -186,7 +188,7 @@ df = st.session_state.data_master
 if not df.empty:
     st.markdown(f"## 🔭 Centro de Mando: {obj_in.upper()}")
     
-    # KPIs SUPERIORES
+    # KPIs WHITE
     k1, k2, k3, k4 = st.columns(4)
     vol = len(df)
     alc = df['Alcance'].sum()
@@ -200,10 +202,9 @@ if not df.empty:
     
     tabs = st.tabs(["📊 ESTRATEGIA", "🎭 EMOCIONES", "🗺️ TÁCTICO", "📝 ANTECEDENTES", "📄 REPORTE PRO"])
     
-    # === TAB 1: ESTRATEGIA (BRANDMENTIONS STYLE) ===
+    # === TAB 1: ESTRATEGIA (TEXTOS GIGANTES) ===
     with tabs[0]:
         st.subheader("Tendencia de Impacto")
-        # Gráfico Dual Axis
         daily = df.groupby('Fecha').agg({'Titular':'count', 'Alcance':'sum'}).reset_index()
         fig_dual = go.Figure()
         fig_dual.add_trace(go.Scatter(x=daily['Fecha'], y=daily['Titular'], name='Menciones', line=dict(color='#38BDF8', width=3)))
@@ -220,29 +221,30 @@ if not df.empty:
             st.subheader("Sunburst Interactivo")
             fig_sun = px.sunburst(df, path=['Sentimiento', 'Fuente', 'Titular'], color='Sentimiento',
                                   color_discrete_map={'Positivo':'#10B981', 'Negativo':'#EF4444', 'Neutro':'#F59E0B'})
-            fig_sun.update_layout(height=500, paper_bgcolor="rgba(0,0,0,0)", font=dict(color="white"))
+            # TEXTO GRANDE SUNBURST
+            fig_sun.update_traces(textinfo="label+percent entry", textfont=dict(size=18, family="Arial Black"))
+            fig_sun.update_layout(height=600, paper_bgcolor="rgba(0,0,0,0)", font=dict(color="white"))
             st.plotly_chart(fig_sun, use_container_width=True)
         with c2:
-            st.subheader("Top Influencers (Voice Share)")
+            st.subheader("Top Influencers")
             top_inf = df.groupby('Fuente').agg({'Alcance':'sum', 'Titular':'count'}).sort_values('Alcance', ascending=False).head(8).reset_index()
-            # Simulamos una barra de progreso visual
             st.dataframe(top_inf, column_config={"Alcance": st.column_config.ProgressColumn("Impacto", format="%d", min_value=0, max_value=int(top_inf['Alcance'].max()))}, use_container_width=True)
 
-        st.subheader("Treemap de Conceptos")
+        st.subheader("Treemap de Conceptos (Alta Legibilidad)")
         fig_tree = px.treemap(df, path=['Lugar', 'Fuente', 'Titular'], color='Sentimiento',
                               color_discrete_map={'Positivo':'#10B981', 'Negativo':'#EF4444', 'Neutro':'#F59E0B'})
-        fig_tree.update_traces(textinfo="label+value", textfont=dict(size=20, color="white"))
-        fig_tree.update_layout(height=500, margin=dict(t=0,l=0,r=0,b=0))
+        # TEXTO GIGANTE TREEMAP
+        fig_tree.update_traces(textinfo="label+value", textfont=dict(size=26, color="white", family="Arial Black"))
+        fig_tree.update_layout(height=600, margin=dict(t=0,l=0,r=0,b=0))
         st.plotly_chart(fig_tree, use_container_width=True)
 
     # === TAB 2: EMOCIONES ===
     with tabs[1]:
         c3, c4 = st.columns(2)
         with c3:
-            st.subheader("Radar Emocional (Asegurado)")
+            st.subheader("Radar Emocional")
             emo_counts = df['Emocion'].value_counts().reset_index()
             emo_counts.columns = ['Emocion', 'Count']
-            # Asegura que siempre haya datos
             fig_rad = px.line_polar(emo_counts, r='Count', theta='Emocion', line_close=True, template="plotly_dark")
             fig_rad.update_traces(fill='toself', line_color='#38BDF8')
             fig_rad.update_layout(paper_bgcolor="rgba(0,0,0,0)", height=450)
@@ -304,7 +306,7 @@ if not df.empty:
         - Estrategia: Contención en '{top_src}' y amplificación en zonas de 'Alegría'.
         - Táctica: Publicar comunicados oficiales los días {df['Dia'].mode()[0]} para maximizar cobertura.
         
-        Generado por El Faro v33.0
+        Generado por El Faro v34.0
         """
         st.text_area("Contenido:", txt_ia, height=400)
         
