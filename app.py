@@ -18,289 +18,293 @@ import random
 import io
 
 # --- 1. CONFIGURACIÓN ---
-st.set_page_config(page_title="El Faro | Nebula Notebook", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="El Faro | Sentinel Prime", layout="wide", page_icon="⚓")
 
-# --- 2. MEMORIA Y ESTADO ---
-if 'data_master' not in st.session_state: st.session_state.data_master = pd.DataFrame()
+# --- 2. MEMORIA BLINDADA (PREVIENE KEYERROR) ---
+# Definimos las columnas base para evitar errores al cargar o guardar
+COLS = ['Fecha', 'Hora', 'Dia', 'Fuente', 'Titular', 'Link', 'Sentimiento', 'Alcance', 'Interacciones', 'Emocion', 'Lugar', 'Tipo']
+
+if 'data_master' not in st.session_state: 
+    st.session_state.data_master = pd.DataFrame(columns=COLS)
 if 'proyectos' not in st.session_state: st.session_state.proyectos = {}
 if 'search_active' not in st.session_state: st.session_state.search_active = False
 
-# --- 3. ESTILOS NEBULA (CONTRASTE MÁXIMO & FIX TEXTOS) ---
-speed = "1.5s" if st.session_state.search_active else "10s"
+# --- 3. ESTILOS VISUALES & FARO RESTAURADO ---
+speed = "2s" if st.session_state.search_active else "12s"
 
 st.markdown(f"""
     <style>
-    /* FUENTE GLOBAL */
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
-    .main {{ background-color: #02040a !important; color: #ffffff !important; font-family: 'Montserrat', sans-serif; }}
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+    .main {{ background-color: #020617 !important; color: #ffffff !important; font-family: 'Inter', sans-serif; }}
     
-    /* TITULARES NEÓN */
-    h1, h2, h3 {{ 
-        color: #00F0FF !important; 
-        text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
-        font-weight: 900 !important; 
-        text-transform: uppercase;
+    /* ANIMACIÓN DEL FARO (RESTAURADA Y MEJORADA) */
+    .lighthouse-container {{
+        position: relative; width: 100%; height: 180px; 
+        display: flex; justify-content: center; align-items: flex-end;
+        background: radial-gradient(circle at bottom, #1e293b 0%, transparent 70%);
+        margin-bottom: 20px; overflow: hidden; border-bottom: 1px solid #38bdf8;
     }}
+    .lighthouse-svg {{ width: 70px; height: 120px; z-index: 10; position: relative; filter: drop-shadow(0 0 10px #38bdf8); }}
+    .beam {{
+        position: absolute; bottom: 90px; left: 50%; width: 600px; height: 600px;
+        background: conic-gradient(from 0deg at 50% 50%, rgba(56,189,248,0.3) 0deg, transparent 60deg);
+        transform-origin: 50% 50%; margin-left: -300px; margin-bottom: -300px;
+        animation: rotateBeam {speed} linear infinite; pointer-events: none; z-index: 1;
+    }}
+    @keyframes rotateBeam {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
 
-    /* KPI CARDS - FORZADO AGRESIVO DE COLOR BLANCO */
+    /* KPI CARDS - ALTO CONTRASTE */
     div[data-testid="stMetric"] {{
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
-        border: 1px solid #00F0FF !important;
-        border-radius: 12px !important;
-        padding: 20px !important;
-        box-shadow: 0 0 20px rgba(0, 240, 255, 0.1);
+        background-color: #0f172a !important; border: 1px solid #38bdf8 !important;
+        border-radius: 10px !important; padding: 15px !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
     }}
-    /* Selector universal para etiquetas dentro de metricas */
-    div[data-testid="stMetric"] label, 
-    div[data-testid="stMetric"] div, 
-    div[data-testid="stMetric"] p {{
-        color: #FFFFFF !important;
-        opacity: 1 !important;
-    }}
-    div[data-testid="stMetricLabel"] {{ font-size: 14px !important; font-weight: 700 !important; letter-spacing: 1px; }}
-    div[data-testid="stMetricValue"] {{ font-size: 42px !important; font-weight: 900 !important; text-shadow: 0 0 10px rgba(255,255,255,0.5); }}
-
-    /* FARO SIDEBAR (AISLADO) */
-    .faro-container {{
-        position: relative; height: 160px; width: 100%; display: flex; justify-content: center;
-        background: radial-gradient(circle at bottom, #001529 0%, transparent 70%);
-        border-bottom: 2px solid #00F0FF; margin-bottom: 20px; overflow: hidden;
-    }}
-    .torre {{ font-size: 70px; z-index: 10; margin-top: 40px; filter: drop-shadow(0 0 10px cyan); }}
-    .haz {{
-        position: absolute; top: 60px; left: 50%; width: 500px; height: 500px;
-        background: conic-gradient(from 180deg at 50% 50%, rgba(0,240,255,0.4) 0deg, transparent 60deg);
-        transform-origin: 50% 50%; animation: radar {speed} linear infinite; z-index: 1; margin-left: -250px;
-    }}
-    @keyframes radar {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
-
-    /* TABS ESTILO CYBERPUNK */
-    .stTabs [aria-selected="true"] {{
-        background-color: #00F0FF !important; color: #000000 !important; font-weight: 900;
-    }}
+    div[data-testid="stMetricLabel"] {{ color: #ffffff !important; font-size: 14px !important; font-weight: 700 !important; opacity: 1 !important; }}
+    div[data-testid="stMetricValue"] {{ color: #38bdf8 !important; font-size: 36px !important; font-weight: 900 !important; }}
+    
+    /* BOTONES Y TABS */
+    .stButton>button {{ background: linear-gradient(90deg, #0284c7, #2563eb); color: white; border: none; font-weight: bold; width: 100%; }}
+    .stTabs [aria-selected="true"] {{ background-color: #38bdf8 !important; color: #000000 !important; font-weight: bold; }}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. MOTORES DE INTELIGENCIA ---
+# --- 4. MOTOR SENTINEL ---
 @st.cache_resource
-def load_engine():
+def load_ia():
     return pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
-def classify_vibra(text):
-    t = text.lower()
-    if any(x in t for x in ['robo', 'delito', 'muerte', 'asesinato', 'encerrona']): return "😱 MIEDO"
-    if any(x in t for x in ['mentira', 'corrupción', 'falla', 'taco', 'basura']): return "🤬 IRA"
-    if any(x in t for x in ['fiesta', 'festival', 'premio', 'ganador', 'playa']): return "🎉 ALEGRÍA"
-    if any(x in t for x in ['triste', 'luto', 'pena', 'despedida']): return "😢 TRISTEZA"
-    return "😐 NEUTRAL"
-
-def scan_nebula(obj, ini, fin):
-    st.session_state.search_active = True
-    analyzer = load_engine()
-    # HYDRA 30 PUNTOS
-    base_urls = [
-        f"https://news.google.com/rss/search?q={quote(obj)}&hl=es-419&gl=CL&ceid=CL:es-419",
-        f"https://news.google.com/rss/search?q={quote(obj + ' redes sociales')}&hl=es-419&gl=CL&ceid=CL:es-419"
-    ]
-    sites = ["tiktok.com", "reddit.com", "instagram.com", "facebook.com", "diarioeldia.cl", "biobiochile.cl"]
-    for s in sites: base_urls.append(f"https://news.google.com/rss/search?q={quote('site:'+s+' '+obj)}&hl=es-419&gl=CL&ceid=CL:es-419")
+def get_metrics_sim(fuente, sent):
+    # Simulación inteligente de métricas
+    base = 100
+    src = fuente.lower()
+    if any(x in src for x in ['biobio', 'emol', 'latercera', 'youtube', 'mega']): base = 100000
+    elif any(x in src for x in ['eldia', 'tiempo', 'observatodo', 'region']): base = 25000
+    elif 'social' in src or 'tiktok' in src: base = 5000
     
-    data = []
+    # Randomizador realista
+    alcance = int(base * random.uniform(0.8, 1.5))
+    interacciones = int(alcance * (0.05 if sent == "Negativo" else 0.02))
+    return alcance, interacciones
+
+def classify_emotion(text):
+    t = text.lower()
+    if any(x in t for x in ['robo', 'muerte', 'delito', 'grave', 'temor']): return "😱 Miedo"
+    if any(x in t for x in ['mentira', 'falla', 'error', 'vergüenza', 'odio']): return "🤬 Ira"
+    if any(x in t for x in ['feliz', 'éxito', 'logro', 'avance', 'bueno']): return "🎉 Alegría"
+    return "😐 Neutral"
+
+def scan_hydra(obj, ini, fin):
+    st.session_state.search_active = True
+    ia = load_ia()
+    
+    # 30 Puntos de Búsqueda
+    urls = []
+    base_rss = "https://news.google.com/rss/search?q={}&hl=es-419&gl=CL&ceid=CL:es-419"
+    kw_extra = ["noticias", "polémica", "municipalidad", "gestión", "seguridad"]
+    sites = ["diarioeldia.cl", "semanariotiempo.cl", "elobservatodo.cl", "miradiols.cl", "tiktok.com", "reddit.com", "instagram.com", "facebook.com"]
+    
+    for k in kw_extra: urls.append(base_rss.format(quote(f"{obj} {k}")))
+    for s in sites: urls.append(base_rss.format(quote(f"site:{s} {obj}")))
+    
+    res = []
     seen = set()
     prog = st.progress(0)
     
-    for i, url in enumerate(base_urls):
+    for i, url in enumerate(urls):
         feed = feedparser.parse(url)
         for entry in feed.entries:
-            if entry.link in seen: continue
+            try: dt = datetime.fromtimestamp(time.mktime(entry.published_parsed))
+            except: dt = datetime.now()
+            
+            if not (ini <= dt.date() <= fin) or entry.link in seen: continue
             seen.add(entry.link)
             
-            # AI
-            res = analyzer(entry.title[:512])[0]
-            score = int(res['label'].split()[0])
-            sent = "🔴 Negativo" if score <= 2 else "🟡 Neutro" if score == 3 else "🟢 Positivo"
-            
-            # Metrics Simulation
+            p = ia(entry.title[:512])[0]
+            score = int(p['label'].split()[0])
+            sent = "Negativo" if score <= 2 else "Neutro" if score == 3 else "Positivo"
             src = entry.source.title if 'source' in entry else "Web"
-            reach = random.randint(1000, 500000) if "biobio" in src.lower() else random.randint(100, 5000)
-            
-            # Geo
+            typ = "Red Social" if any(x in src.lower() for x in ['tiktok','instagram','facebook','twitter','reddit']) else "Prensa"
             lug = "La Serena"
             if "coquimbo" in entry.title.lower(): lug = "Coquimbo"
-            if "ovalle" in entry.title.lower(): lug = "Ovalle"
             
-            data.append({
-                'Fecha': datetime.now().date(), 'Fuente': src, 'Titular': entry.title, 
-                'Link': entry.link, 'Sentimiento': sent, 'Alcance': reach,
-                'Vibra': classify_vibra(entry.title), 'Lugar': lug, 'Tipo': 'Rastreo Automático'
+            alcance, inter = get_metrics_sim(src, sent)
+            
+            res.append({
+                'Fecha': dt.date(), 'Hora': dt.hour, 'Dia': dt.strftime('%A'),
+                'Fuente': src, 'Titular': entry.title, 'Link': entry.link,
+                'Sentimiento': sent, 'Alcance': alcance, 'Interacciones': inter,
+                'Emocion': classify_emotion(entry.title), 'Lugar': lug, 'Tipo': typ
             })
-        prog.progress((i+1)/len(base_urls))
-    
+        prog.progress((i+1)/len(urls))
+        
     st.session_state.search_active = False
-    return pd.DataFrame(data)
+    return pd.DataFrame(res)
 
 # --- 5. SIDEBAR ---
 with st.sidebar:
-    st.markdown("""<div class='faro-container'><div class='haz'></div><div class='torre'>⚓</div></div>""", unsafe_allow_html=True)
+    # FARO SVG RESTAURADO
+    st.markdown("""
+        <div class="lighthouse-container">
+            <div class="beam"></div>
+            <svg class="lighthouse-svg" viewBox="0 0 100 200">
+                <path d="M35,190 L65,190 L60,50 L40,50 Z" fill="#cbd5e1" stroke="#38BDF8" stroke-width="2"/>
+                <rect x="35" y="30" width="30" height="20" fill="#facc15" rx="2" stroke="#facc15"/>
+                <path d="M30,30 L50,10 L70,30 Z" fill="#0f172a" stroke="#38BDF8" stroke-width="2"/>
+                <rect x="42" y="50" width="16" height="140" fill="#94a3b8" opacity="0.3"/>
+            </svg>
+        </div>
+    """, unsafe_allow_html=True)
+    
     st.title("EL FARO")
-    st.caption("Nebula Notebook v30.0")
+    st.caption("Sentinel Prime v31.0")
     
     obj_in = st.text_input("Objetivo", "Daniela Norambuena")
+    ini = st.date_input("Inicio", datetime.now()-timedelta(days=30))
+    fin = st.date_input("Fin", datetime.now())
+    
     if st.button("🔥 ACTIVAR RADAR"):
-        st.session_state.data_master = scan_nebula(obj_in, None, None)
+        st.session_state.data_master = scan_hydra(obj_in, ini, fin)
         
     with st.expander("📂 Proyectos"):
-        p_save = st.text_input("Guardar como...")
-        if st.button("💾 Guardar") and p_save:
-            st.session_state.proyectos[p_save] = st.session_state.data_master
-            st.success(f"Proyecto {p_save} guardado.")
-        
+        p_name = st.text_input("Nombre")
+        if st.button("Guardar"):
+            if not st.session_state.data_master.empty:
+                st.session_state.proyectos[p_name] = st.session_state.data_master
+                st.success("Guardado")
         if st.session_state.proyectos:
             sel = st.selectbox("Cargar", list(st.session_state.proyectos.keys()))
             if st.button("Abrir"):
                 st.session_state.data_master = st.session_state.proyectos[sel]
                 st.rerun()
 
-# --- 6. DASHBOARD NEBULA ---
+# --- 6. DASHBOARD ---
 df = st.session_state.data_master
 if not df.empty:
-    st.markdown(f"## 🔭 Centro de Inteligencia: {obj_in}")
+    st.markdown(f"## 🔭 Centro de Inteligencia: {obj_in.upper()}")
     
-    tabs = st.tabs(["📊 ESTRATEGIA", "📓 NOTEBOOK LM", "🎭 EMOCIÓN & FUNNEL", "🗺️ TÁCTICO", "📄 REPORTE PRO"])
-    
+    # KPIs WHITE HOT
+    k1, k2, k3, k4 = st.columns(4)
     vol = len(df)
-    reach = df['Alcance'].sum()
-    pos = len(df[df.Sentimiento.str.contains("Positivo")])
-    neg = len(df[df.Sentimiento.str.contains("Negativo")])
+    try:
+        alc = df['Alcance'].sum()
+        inter = df['Interacciones'].sum()
+        pos_perc = int(len(df[df.Sentimiento=='Positivo'])/vol*100)
+    except: alc=0; inter=0; pos_perc=0 # Fallback por si acaso
+    
+    k1.metric("MENCIONES", vol)
+    k2.metric("ALCANCE EST.", f"{alc/1000000:.1f}M")
+    k3.metric("INTERACCIONES", f"{inter/1000:.1f}K")
+    k4.metric("POSITIVIDAD", f"{pos_perc}%")
+    
+    tabs = st.tabs(["📊 ESTRATEGIA", "📥 INGESTA TÁCTICA", "🗺️ GEO & EMOCIÓN", "📄 REPORTE PRO", "📝 DATOS"])
     
     # === TAB 1: ESTRATEGIA ===
     with tabs[0]:
-        # KPIs WHITE HOT
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("MENCIONES TOTALES", vol)
-        k2.metric("ALCANCE ESTIMADO", f"{reach/1000000:.1f}M")
-        k3.metric("POSITIVIDAD", f"{int(pos/vol*100)}%", "🟢")
-        k4.metric("RIESGO CRÍTICO", f"{int(neg/vol*100)}%", "🔴")
-        
-        st.divider()
-        
-        c1, c2 = st.columns([3, 2])
+        c1, c2 = st.columns([1, 1])
         with c1:
-            st.markdown("### 🌳 Mapa de Calor de Conceptos (Treemap)")
-            fig_tree = px.treemap(df, path=['Lugar', 'Fuente', 'Titular'], color='Sentimiento',
-                                  color_discrete_map={'🟢 Positivo':'#00FF00', '🔴 Negativo':'#FF0000', '🟡 Neutro':'#FFFF00'})
-            # TEXTO GIGANTE Y NEGRO PARA CONTRASTE DENTRO DEL COLOR
-            fig_tree.update_traces(textinfo="label+value", textfont=dict(size=28, color="black"), root_color="white")
-            fig_tree.update_layout(height=600, margin=dict(t=0, l=0, r=0, b=0))
-            st.plotly_chart(fig_tree, use_container_width=True)
-            
-        with c2:
-            st.markdown("### 🕸️ Navegador Solar (Sunburst)")
-            fig_sun = px.sunburst(df, path=['Sentimiento', 'Fuente'], color='Sentimiento',
-                                  color_discrete_map={'🟢 Positivo':'#00FF00', '🔴 Negativo':'#FF0000', '🟡 Neutro':'#FFFF00'})
-            fig_sun.update_layout(height=600, font=dict(size=18))
+            st.markdown("### 🕸️ Ecosistema (Sunburst)")
+            fig_sun = px.sunburst(df, path=['Sentimiento', 'Fuente', 'Titular'], color='Sentimiento',
+                                  color_discrete_map={'Positivo':'#10b981', 'Negativo':'#ef4444', 'Neutro':'#f59e0b'})
+            fig_sun.update_layout(height=600, paper_bgcolor="rgba(0,0,0,0)", font=dict(color="white"))
             st.plotly_chart(fig_sun, use_container_width=True)
+        with c2:
+            st.markdown("### 🌳 Mapa de Conceptos (Treemap)")
+            fig_tree = px.treemap(df, path=['Lugar', 'Fuente', 'Titular'], color='Sentimiento',
+                                  color_discrete_map={'Positivo':'#10b981', 'Negativo':'#ef4444', 'Neutro':'#f59e0b'})
+            fig_tree.update_traces(textinfo="label+value", textfont=dict(size=24))
+            fig_tree.update_layout(height=600, margin=dict(t=0,l=0,r=0,b=0))
+            st.plotly_chart(fig_tree, use_container_width=True)
 
-    # === TAB 2: NOTEBOOK LM (INGESTA MANUAL) ===
+    # === TAB 2: INGESTA TÁCTICA (MANUAL) ===
     with tabs[1]:
-        st.markdown("### 📓 Cuaderno de Ingestión Táctica")
-        st.info("Pega aquí textos de comunicados, noticias offline, transcripciones de radio o notas de reuniones. El sistema las procesará como inteligencia.")
+        st.markdown("### 📥 Ingesta Manual de Inteligencia")
+        st.info("Utilice este módulo para incorporar datos offline, comunicados o hallazgos directos al análisis.")
         
-        with st.form("notebook_form"):
-            raw_text = st.text_area("📝 Pegar Texto / Nota de Inteligencia", height=150)
-            uploaded_file = st.file_uploader("📷 Adjuntar Evidencia (Imagen/PDF - Simulación)", type=['png','jpg','pdf'])
-            manual_source = st.text_input("Fuente del dato (Ej: Radio Madero, WhatsApp Vecinos)", "Inteligencia Humana")
+        with st.form("manual_ingest"):
+            txt_in = st.text_area("Texto / Transcripción / Nota", height=150)
+            src_in = st.text_input("Fuente (Ej: Radio, WhatsApp, Reunión)", "Inteligencia Humana")
+            sub = st.form_submit_button("⚡ PROCESAR E INTEGRAR")
             
-            submitted = st.form_submit_button("⚡ PROCESAR E INCORPORAR AL DASHBOARD")
-            
-            if submitted and raw_text:
-                # Procesar texto con el mismo motor IA
-                ia = load_engine()
-                res = ia(raw_text[:512])[0]
-                sc = int(res['label'].split()[0])
-                s_manual = "🔴 Negativo" if sc <= 2 else "🟡 Neutro" if sc == 3 else "🟢 Positivo"
+            if sub and txt_in:
+                # Procesar como dato real
+                ia = load_ia()
+                sc = int(ia(txt_in[:512])[0]['label'].split()[0])
+                s_new = "Negativo" if sc <= 2 else "Neutro" if sc == 3 else "Positivo"
+                a_new, i_new = get_metrics_sim("Manual", s_new)
                 
                 new_row = {
-                    'Fecha': datetime.now().date(), 'Fuente': manual_source, 'Titular': raw_text[:100]+"...",
-                    'Link': 'Manual Input', 'Sentimiento': s_manual, 'Alcance': 1000, 
-                    'Vibra': classify_vibra(raw_text), 'Lugar': "Manual", 'Tipo': 'Notebook LM'
+                    'Fecha': datetime.now().date(), 'Hora': 12, 'Dia': 'Manual', 
+                    'Fuente': src_in, 'Titular': txt_in[:100]+"...", 'Link': 'Manual',
+                    'Sentimiento': s_new, 'Alcance': a_new, 'Interacciones': i_new,
+                    'Emocion': classify_emotion(txt_in), 'Lugar': 'Manual', 'Tipo': 'Ingesta'
                 }
                 st.session_state.data_master = pd.concat([st.session_state.data_master, pd.DataFrame([new_row])], ignore_index=True)
-                st.success("✅ Dato incorporado exitosamente al cerebro de El Faro.")
+                st.success("Dato incorporado al sistema.")
                 st.rerun()
 
-    # === TAB 3: EMOCIÓN & FUNNEL ===
+    # === TAB 3: GEO & EMOCIÓN ===
     with tabs[2]:
         c3, c4 = st.columns(2)
         with c3:
-            st.markdown("### 📡 Radar de Vibras")
-            df_vibra = df['Vibra'].value_counts().reset_index()
-            df_vibra.columns = ['Vibra', 'Count']
-            fig_rad = px.line_polar(df_vibra, r='Count', theta='Vibra', line_close=True, template="plotly_dark")
-            fig_rad.update_traces(fill='toself', line_color='#00F0FF')
+            st.markdown("### 📡 Radar Emocional")
+            emo_counts = df['Emocion'].value_counts().reset_index()
+            emo_counts.columns = ['Emocion', 'Count']
+            fig_rad = px.line_polar(emo_counts, r='Count', theta='Emocion', line_close=True, template="plotly_dark")
+            fig_rad.update_traces(fill='toself', line_color='#38bdf8')
             st.plotly_chart(fig_rad, use_container_width=True)
-            
         with c4:
-            st.markdown("### 🌪️ Embudo de Conversión Mediática")
-            funnel_data = dict(
-                number=[reach, vol*1000, vol],
-                stage=["Alcance Potencial", "Lecturas Estimadas", "Menciones Reales"]
-            )
-            fig_fun = px.funnel(funnel_data, x='number', y='stage')
-            fig_fun.update_traces(marker=dict(color=["#00F0FF", "#00BFFF", "#1E90FF"]))
-            fig_fun.update_layout(template="plotly_dark")
-            st.plotly_chart(fig_fun, use_container_width=True)
+            st.markdown("### 📍 Mapa Táctico")
+            m = folium.Map(location=[-29.90, -71.25], zoom_start=12, tiles="CartoDB dark_matter")
+            mc = MarkerCluster().add_to(m)
+            for _, r in df.iterrows():
+                folium.Marker([random.uniform(-29.95,-29.85), random.uniform(-71.3,-71.2)], popup=r['Titular']).add_to(mc)
+            st_folium(m, width="100%", height=400)
 
-    # === TAB 4: GEO & TÁCTICO ===
+    # === TAB 4: REPORTE PRO ===
     with tabs[3]:
-        m = folium.Map(location=[-29.9027, -71.2519], zoom_start=12, tiles="CartoDB dark_matter")
-        mc = MarkerCluster().add_to(m)
-        for _, r in df.iterrows():
-            icon_color = "green" if "Positivo" in r['Sentimiento'] else "red" if "Negativo" in r['Sentimiento'] else "beige"
-            folium.Marker([random.uniform(-29.95,-29.85), random.uniform(-71.3,-71.2)], popup=r['Titular'], icon=folium.Icon(color=icon_color, icon="info-sign")).add_to(mc)
-        st_folium(m, width="100%", height=600)
-
-    # === TAB 5: REPORTE PRO ===
-    with tabs[4]:
-        st.subheader("Generador de Informes Consultivos")
+        st.subheader("Generador de Informes Ejecutivos")
         
-        txt_report = f"""
-        INFORME DE INTELIGENCIA TÁCTICA - PROYECTO NEBULA
-        =================================================
-        OBJETIVO: {obj_in.upper()} | FECHA: {datetime.now().strftime('%d/%m/%Y')}
+        top_src = df['Fuente'].mode()[0] if not df.empty else "N/A"
+        txt_rep = f"""
+        INFORME DE INTELIGENCIA ESTRATÉGICA - SENTINEL PRIME
+        ====================================================
+        OBJETIVO: {obj_in.upper()} | PERIODO: {ini} al {fin}
         
         1. SÍNTESIS EJECUTIVA
-        El sistema Sentinel ha procesado {vol} unidades de información, incluyendo ingresos vía Notebook LM.
-        El sentimiento consolidado es {df['Sentimiento'].mode()[0]}.
+        Se han procesado {vol} unidades de información con un alcance estimado de {alc/1000000:.2f}M impresiones.
+        El sentimiento predominante es {df['Sentimiento'].mode()[0]}.
         
-        2. ANÁLISIS DE VIBRA SOCIAL
-        La emoción predominante detectada es {df['Vibra'].mode()[0]}, lo que sugiere una tendencia clara en la opinión pública.
+        2. HALLAZGOS TÁCTICOS
+        La fuente de mayor tracción es '{top_src}'. La emoción dominante en la audiencia es '{df['Emocion'].mode()[0]}'.
         
-        3. HALLAZGOS DEL NOTEBOOK
-        Se han integrado datos manuales y evidencia fotográfica que corroboran la tendencia de '{df['Fuente'].mode()[0]}'.
+        3. RECOMENDACIÓN
+        {'Mantener estrategia.' if pos_perc > 50 else 'Activar protocolo de crisis digital.'}
         
-        Generado por El Faro v30.0
+        Generado por El Faro v31.0
         """
-        st.text_area("Cuerpo del Informe:", txt_report, height=400)
+        st.text_area("Contenido:", txt_rep, height=300)
         
-        if st.button("📄 EXPORTAR PDF CON GRÁFICOS INCRUSTADOS"):
-            # Generar gráfico temporal para PDF
-            fig_img, ax = plt.subplots(figsize=(6,4))
-            df['Sentimiento'].value_counts().plot(kind='barh', color=['green','red','yellow'], ax=ax)
-            img_buf = io.BytesIO(); plt.savefig(img_buf, format='png'); img_buf.seek(0)
+        if st.button("📄 GENERAR PDF CON GRÁFICOS"):
+            # Gráficos
+            fig, ax = plt.subplots(figsize=(6,4))
+            df['Sentimiento'].value_counts().plot(kind='bar', color=['green','red','orange'], ax=ax)
+            buf = io.BytesIO(); plt.savefig(buf, format='png'); buf.seek(0)
             
-            pdf = FPDF()
-            pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "REPORTE EL FARO - NEBULA", 0, 1, 'C')
-            pdf.ln(10); pdf.set_font("Arial", size=11)
-            pdf.multi_cell(0, 8, txt_report.encode('latin-1','replace').decode('latin-1'))
+            pdf = FPDF(); pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "REPORTE EL FARO", 0, 1, 'C')
+            pdf.ln(10); pdf.set_font("Arial", size=11); pdf.multi_cell(0, 8, txt_rep.encode('latin-1','replace').decode('latin-1'))
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                f.write(buf.getvalue()); pdf.image(f.name, x=50, w=100)
             
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f:
-                f.write(img_buf.getvalue())
-                pdf.image(f.name, x=10, y=140, w=100)
-                
-            out = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            out = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
             pdf.output(out.name)
-            with open(out.name, "rb") as f: st.download_button("📥 DESCARGAR PDF", f, "Reporte_Nebula.pdf")
+            with open(out.name, "rb") as f: st.download_button("📥 DESCARGAR PDF", f, "Reporte_Prime.pdf")
+
+    # === TAB 5: GESTIÓN ===
+    with tabs[4]:
+        df_ed = st.data_editor(df, use_container_width=True, key="ed_v31")
+        if st.button("💾 SINCRONIZAR"):
+            st.session_state.data_master = df_ed
+            st.success("OK")
 
 else:
-    st.info("👋 El Faro en espera. Inicia un escaneo o carga un proyecto.")
+    st.info("👋 Bienvenido a El Faro. Configure su misión en el panel lateral.")
