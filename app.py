@@ -15,42 +15,37 @@ import folium
 from streamlit_folium import st_folium
 from folium.plugins import HeatMap, MarkerCluster
 import random
-import json
+import io
 
-# --- 1. CONFIGURACIÓN E IDENTIDAD ---
+# --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="El Faro | Sentinel Intelligence", layout="wide", page_icon="⚓")
 
-# --- 2. ESTILOS PRO & ANIMACIÓN FARO ---
+# --- 2. ESTILOS PRO & ILUSTRACIÓN FARO ---
 st.markdown("""
     <style>
     .main { background: #020617; color: #f8fafc; }
     h1 { background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; }
     
-    /* Animación del Faro/Radar */
-    .faro-container {
-        display: flex; justify-content: center; align-items: center; padding: 20px;
+    /* Animación Faro Realista */
+    .lighthouse-wrap { position: relative; width: 100%; text-align: center; padding: 20px; }
+    .lighthouse { font-size: 60px; filter: drop-shadow(0 0 10px #38bdf8); }
+    .light-beam {
+        position: absolute; top: 30px; left: 50%; width: 200px; height: 100px;
+        background: conic-gradient(from 0deg at 0% 50%, rgba(56,189,248,0.5) 0deg, transparent 60deg);
+        transform-origin: 0% 50%; animation: rotateBeam 4s linear infinite;
     }
-    .faro-luz {
-        width: 100px; height: 100px; background: #38bdf8; border-radius: 50%;
-        box-shadow: 0 0 50px #38bdf8; position: relative;
-        animation: pulso 2s infinite;
-    }
-    @keyframes pulso {
-        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7); }
-        70% { transform: scale(1); box-shadow: 0 0 0 30px rgba(56, 189, 248, 0); }
-        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
-    }
-    
-    div[data-testid="stMetric"] { background: rgba(30, 41, 59, 0.8); border: 1px solid #38bdf8; border-radius: 15px; padding: 20px; }
-    .stTabs [aria-selected="true"] { background-color: #0284c7 !important; color: white !important; font-weight: bold; }
+    @keyframes rotateBeam { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* KPIs ALTO CONTRASTE */
+    div[data-testid="stMetric"] { background: #1e293b; border: 2px solid #38bdf8; border-radius: 15px; padding: 20px; }
+    div[data-testid="stMetricValue"] { color: #ffffff !important; font-size: 35px !important; }
+    div[data-testid="stMetricLabel"] { color: #38bdf8 !important; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. GESTOR DE PROYECTOS (MEMORIA) ---
-if 'proyectos' not in st.session_state:
-    st.session_state.proyectos = {}
-if 'data_master' not in st.session_state:
-    st.session_state.data_master = pd.DataFrame()
+# --- 3. PERSISTENCIA ---
+if 'data_master' not in st.session_state: st.session_state.data_master = pd.DataFrame()
+if 'proyectos' not in st.session_state: st.session_state.proyectos = {}
 
 # --- 4. GEODATA LA SERENA/COQUIMBO ---
 GEO_DB = {
@@ -60,199 +55,176 @@ GEO_DB = {
     "municipalidad": [-29.9045, -71.2489], "el milagro": [-29.9333, -71.2333]
 }
 
-# --- 5. MOTOR SENTINEL CORE ---
+# --- 5. MOTOR SENTINEL (DEEP HYDRA) ---
 @st.cache_resource
-def cargar_cerebro():
+def cargar_ia():
     return pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
-def clasificar_fuente_pro(link, nombre):
-    l, n = link.lower(), nombre.lower()
-    social = ['twitter', 'facebook', 'instagram', 'tiktok', 'x.com', 'youtube', 'reddit', 'threads']
-    if any(x in l or x in n for x in social): return "Red Social"
+def clasificar_redes(link):
+    l = link.lower()
+    redes = ['tiktok', 'reddit', 'threads', 'instagram', 'facebook', 'x.com', 'twitter', 'youtube']
+    for r in redes:
+        if r in l: return "Red Social"
     return "Prensa/Medios"
 
-def escanear_deep(obj, ini, fin, extra_kw, sitios):
-    ia = cargar_cerebro()
-    queries = [obj, f'"{obj}"']
-    if extra_kw: queries.append(f"{obj} {extra_kw}")
+def mineria_profunda(obj, ini, fin, extra):
+    ia = cargar_ia()
+    # ESTRATEGIA HYDRA: Triangulación de Redes + Prensa
+    targets = [
+        "diarioeldia.cl", "semanariotiempo.cl", "elobservatodo.cl", "miradiols.cl", "diariolaregion.cl",
+        "tiktok.com", "reddit.com", "threads.net", "instagram.com", "twitter.com"
+    ]
     
-    urls = []
-    base_rss = "https://news.google.com/rss/search?q={}&hl=es-419&gl=CL&ceid=CL:es-419"
+    urls = [f"https://news.google.com/rss/search?q={quote(obj)}&hl=es-419&gl=CL&ceid=CL:es-419"]
+    for t in targets:
+        urls.append(f"https://news.google.com/rss/search?q={quote(f'site:{t} {obj}')}&hl=es-419&gl=CL&ceid=CL:es-419")
     
-    # Búsqueda amplificada
-    for q in queries:
-        urls.append(base_rss.format(quote(q)))
-    if sitios:
-        for s in sitios.split(","):
-            urls.append(base_rss.format(quote(f'site:{s.strip()} {obj}')))
-            
     res = []
-    vistos = set()
+    vistos = set() # Solo eliminamos si el LINK es idéntico. Fuentes distintas con misma nota se mantienen.
     prog = st.progress(0)
+    
     for i, u in enumerate(urls):
         feed = feedparser.parse(u)
         for entry in feed.entries:
-            try: dt = datetime.fromtimestamp(time.mktime(entry.published_parsed)).date()
-            except: dt = datetime.now().date()
-            if not (ini <= dt <= fin) or entry.link in vistos: continue
+            try: f_dt = datetime.fromtimestamp(time.mktime(entry.published_parsed)).date()
+            except: f_dt = datetime.now().date()
+            if not (ini <= f_dt <= fin) or entry.link in vistos: continue
             vistos.add(entry.link)
             
             p = ia(entry.title[:512])[0]
-            score = int(p['label'].split()[0])
-            sent = "Negativo" if score <= 2 else "Neutro" if score == 3 else "Positivo"
+            s_val = int(p['label'].split()[0])
+            sent = "Negativo" if s_val <= 2 else "Neutro" if s_val == 3 else "Positivo"
             
-            # Geo-Inteligencia
+            # Geo-Engine
             t_low = entry.title.lower()
             lat, lon, lug = -29.9027, -71.2519, "General"
             for k, v in GEO_DB.items():
                 if k in t_low: lat, lon, lug = v[0], v[1], k.title(); break
             
             res.append({
-                'Fecha': dt, 'Fuente': entry.source.title if 'source' in entry else "Web",
+                'Fecha': f_dt, 'Fuente': entry.source.title if 'source' in entry else "Digital",
                 'Titular': entry.title, 'Sentimiento': sent, 'Link': entry.link,
-                'Tipo': clasificar_fuente_pro(entry.link, entry.source.title if 'source' in entry else ""),
-                'Lat': lat, 'Lon': lon, 'Lugar': lug, 'Etiqueta': obj
+                'Tipo': clasificar_redes(entry.link), 'Lat': lat, 'Lon': lon, 'Lugar': lug, 'Etiqueta': obj
             })
         prog.progress((i+1)/len(urls))
     prog.empty()
     return pd.DataFrame(res)
 
-# --- 6. INTERFAZ SIDEBAR ---
+# --- 6. SIDEBAR ---
 with st.sidebar:
-    st.markdown("<div class='faro-container'><div class='faro-luz'></div></div>", unsafe_allow_html=True)
-    st.title("⚓ EL FARO")
-    st.caption("v16.0 Titan Core")
+    st.markdown("""<div class='lighthouse-wrap'><div class='light-beam'></div><div class='lighthouse'>⚓</div></div>""", unsafe_allow_html=True)
+    st.title("EL FARO")
     
-    # PROYECTOS
-    with st.expander("📂 Mis Proyectos (Guardar/Cargar)"):
-        p_nombre = st.text_input("Nombre del Proyecto")
-        if st.button("💾 Guardar Config Actual"):
-            if p_nombre:
-                st.session_state.proyectos[p_nombre] = {
-                    "obj": obj_input, "ext": extra_kw, "sitios": sitios_prio, "ini": f_ini, "fin": f_fin
-                }
-                st.success(f"Proyecto {p_nombre} guardado.")
-        
+    with st.expander("💾 Mis Proyectos"):
+        p_name = st.text_input("Nombre Proyecto")
+        if st.button("Guardar"):
+            st.session_state.proyectos[p_name] = {"obj": obj_main, "extra": ext_kw, "ini": f_ini, "fin": f_fin}
+            st.success("Guardado")
         if st.session_state.proyectos:
-            p_select = st.selectbox("Cargar Proyecto", list(st.session_state.proyectos.keys()))
-            if st.button("📂 Cargar"):
-                config = st.session_state.proyectos[p_select]
-                # Nota: Los inputs se actualizan por la clave interna de Streamlit en la siguiente ejecución
-                st.info(f"Cargado {p_select}. Pulse 'ENCENDER' para procesar.")
+            p_sel = st.selectbox("Cargar", list(st.session_state.proyectos.keys()))
+            if st.button("Cargar"): st.info(f"Cargado {p_sel}. Pulse ENCENDER.")
 
     st.divider()
-    
-    # CONFIG DE BÚSQUEDA
-    modo = st.radio("Modo Operativo", ["Individual", "Versus (Comparativo)"])
-    if modo == "Individual":
-        obj_input = st.text_input("Objetivo", "Daniela Norambuena")
-        obj_b = None
-    else:
-        obj_input = st.text_input("Objetivo A", "Daniela Norambuena")
-        obj_b = st.text_input("Objetivo B", "Roberto Jacob")
-        
-    extra_kw = st.text_input("Palabras Clave Extra", placeholder="seguridad, festival")
-    sitios_prio = st.text_area("Sitios Específicos", "semanariotiempo.cl, diariolaregion.cl, diarioeldia.cl, elobservatodo.cl")
-    
-    col1, col2 = st.columns(2)
-    f_ini = col1.date_input("Inicio", datetime.now()-timedelta(days=30))
-    f_fin = col2.date_input("Fin", datetime.now())
+    modo = st.radio("Modo", ["Individual", "Versus"])
+    obj_main = st.text_input("Objetivo", "Daniela Norambuena")
+    obj_vs = st.text_input("Contra", "") if modo == "Versus" else None
+    ext_kw = st.text_input("Extra", "seguridad, obras")
+    c1, c2 = st.columns(2)
+    f_ini, f_fin = c1.date_input("Desde", datetime.now()-timedelta(days=30)), c2.date_input("Hasta", datetime.now())
     
     if st.button("🔥 ENCENDER EL FARO"):
-        st.session_state.data_master = pd.DataFrame()
-        with st.spinner("Rastreando ecosistema digital..."):
-            df_a = escanear_deep(obj_input, f_ini, f_fin, extra_kw, sitios_prio)
+        with st.spinner("Minando redes y prensa regional..."):
+            df_a = mineria_profunda(obj_main, f_ini, f_fin, ext_kw)
             st.session_state.data_master = df_a
-            if modo == "Versus (Comparativo)" and obj_b:
-                df_b = escanear_deep(obj_b, f_ini, f_fin, extra_kw, sitios_prio)
+            if modo == "Versus" and obj_vs:
+                df_b = mineria_profunda(obj_vs, f_ini, f_fin, ext_kw)
                 st.session_state.data_master = pd.concat([df_a, df_b], ignore_index=True)
 
-# --- 7. DASHBOARD TITAN ---
+# --- 7. PANEL DE CONTROL ---
 df = st.session_state.data_master
-
 if not df.empty:
-    st.markdown(f"## ⚓ Dashboard de Inteligencia: {obj_input}")
+    st.markdown(f"# 🛰️ Radar Activo: {obj_main}")
+    tabs = st.tabs(["📊 ESTRATEGIA", "🗺️ GEO-TACTICAL", "🛠️ GESTIÓN", "📄 INFORME IA"])
     
-    tabs = st.tabs(["📊 ESTRATEGIA 360", "⚔️ VERSUS", "🗺️ GEO-TACTICAL", "📝 GESTIÓN", "📄 INFORME IA"])
-    
-    # TAB 1: ESTRATEGIA
     with tabs[0]:
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Volumen Total", len(df))
-        k2.metric("Positivos", len(df[df.Sentimiento=='Positivo']), "🟢")
-        k3.metric("Negativos", len(df[df.Sentimiento=='Negativo']), "-🔴", delta_color="inverse")
-        k4.metric("Fuentes", df['Fuente'].nunique())
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Impactos", len(df))
+        c2.metric("Positivos", len(df[df.Sentimiento=='Positivo']), "🟢")
+        c3.metric("Riesgo", len(df[df.Sentimiento=='Negativo']), "🔴", delta_color="inverse")
         
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            st.subheader("🕸️ Sunburst Conceptual")
-            fig_sun = px.sunburst(df, path=['Etiqueta', 'Sentimiento', 'Fuente', 'Titular'], color='Sentimiento', 
-                                  color_discrete_map={'Positivo':'#10b981', 'Negativo':'#ef4444', 'Neutro':'#f59e0b'})
-            fig_sun.update_layout(height=600, paper_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_sun, use_container_width=True)
+        col_l, col_r = st.columns([2, 1])
+        with col_l:
+            fig = px.sunburst(df, path=['Sentimiento', 'Fuente', 'Titular'], color='Sentimiento', 
+                              color_discrete_map={'Positivo':'#10b981', 'Negativo':'#ef4444', 'Neutro':'#f59e0b'})
+            fig.update_layout(height=600, paper_bgcolor="rgba(0,0,0,0)", font_color="white")
+            st.plotly_chart(fig, use_container_width=True)
             
-        with c2:
+        with col_r:
             st.subheader("🌡️ Reputación")
-            pos, neg, vol = len(df[df.Sentimiento=='Positivo']), len(df[df.Sentimiento=='Negativo']), len(df)
-            sc = ((pos*100)+(vol-neg-pos)*50)/vol if vol>0 else 0
-            fig_g = go.Figure(go.Indicator(mode="gauge+number", value=sc, gauge={'axis':{'range':[0,100]}, 'bar':{'color':"#38bdf8"}, 
-                                                                         'steps':[{'range':[0,40],'color':'#ef4444'},{'range':[60,100],'color':'#10b981'}]}))
-            fig_g.update_layout(height=300, paper_bgcolor="rgba(0,0,0,0)", font={'color':'white'})
+            pos, neg, tot = len(df[df.Sentimiento=='Positivo']), len(df[df.Sentimiento=='Negativo']), len(df)
+            val = ((pos*100)+(tot-neg-pos)*50)/tot if tot > 0 else 0
+            fig_g = go.Figure(go.Indicator(mode="gauge+number", value=val, gauge={'axis':{'range':[0,100], 'tickcolor':"white"}, 'bar':{'color':"#38bdf8"},
+                                                                         'steps':[{'range':[0,40],'color':'#ef4444'},{'range':[40,60],'color':'#f59e0b'},{'range':[60,100],'color':'#10b981'}]}))
+            fig_g.update_layout(height=350, paper_bgcolor="rgba(0,0,0,0)", font_color="white")
             st.plotly_chart(fig_g, use_container_width=True)
-            
-            st.subheader("🏆 Top Fuentes")
-            st.bar_chart(df['Fuente'].value_counts().head(10))
 
-    # TAB 2: VERSUS
+        st.subheader("🌳 Clima por Zona")
+        fig_tree = px.treemap(df, path=['Lugar', 'Fuente', 'Titular'], color='Sentimiento', 
+                              color_discrete_map={'Positivo':'#10b981', 'Negativo':'#ef4444', 'Neutro':'#f59e0b'})
+        fig_tree.update_traces(textinfo="label+value", textfont=dict(size=20))
+        st.plotly_chart(fig_tree, use_container_width=True)
+
     with tabs[1]:
-        if modo == "Versus (Comparativo)":
-            st.subheader("⚔️ Análisis Comparativo")
-            fig_vs = px.bar(df, x="Etiqueta", color="Sentimiento", barmode="group",
-                            color_discrete_map={'Positivo':'#10b981', 'Negativo':'#ef4444', 'Neutro':'#f59e0b'})
-            st.plotly_chart(fig_vs, use_container_width=True)
-        else:
-            st.info("Activa el modo Versus en el menú lateral para comparar objetivos.")
-
-    # TAB 3: GEO
-    with tabs[2]:
-        st.subheader("📍 Despliegue Geo-Tactical")
         m = folium.Map(location=[-29.9027, -71.2519], zoom_start=12, tiles="CartoDB dark_matter")
         for _, r in df.iterrows():
             c = "green" if r.Sentimiento=='Positivo' else "red" if r.Sentimiento=='Negativo' else "orange"
             folium.Marker([r.Lat, r.Lon], popup=f"<a href='{r.Link}' target='_blank'>{r.Fuente}</a>", icon=folium.Icon(color=c)).add_to(m)
         st_folium(m, width="100%", height=600)
 
-    # TAB 4: GESTIÓN
-    with tabs[3]:
-        st.subheader("🛠️ Editor de Mando")
-        df_ed = st.data_editor(df, column_config={"Link": st.column_config.LinkColumn("Enlace")}, use_container_width=True)
-        st.session_state.data_master = df_ed
+    with tabs[2]:
+        st.subheader("Validación Humana (Edita Sentimientos)")
+        df_edit = st.data_editor(df, column_config={"Link": st.column_config.LinkColumn("Ver"), "Sentimiento": st.column_config.SelectboxColumn("Sentimiento", options=["Positivo","Negativo","Neutro","Irrelevante"])}, use_container_width=True, key="editor_v18")
+        st.session_state.data_master = df_edit
 
-    # TAB 5: INFORME IA
-    with tabs[4]:
-        if st.button("✍️ GENERAR INFORME IA LITERARIO"):
-            txt = f"""
-            INFORME DE INTELIGENCIA ESTRATÉGICA - EL FARO
-            --------------------------------------------
-            OBJETIVO: {obj_input.upper()}
+    with tabs[3]:
+        if st.button("✍️ GENERAR INFORME ESTRATÉGICO"):
+            p_perc = int(pos/tot*100) if tot>0 else 0
+            txt_ia = f"""
+            INFORME DE INTELIGENCIA EL FARO - ESTRATEGIA DIGITAL
+            ====================================================
+            OBJETIVO: {obj_main.upper()}
             RANGO ANALIZADO: {f_ini} al {f_fin}
-            ESTADO DE REPUTACIÓN: {'ESTABLE' if sc > 50 else 'CRÍTICO'}
             
-            En la presente auditoría digital, el motor Sentinel ha identificado un volumen de {len(df)} menciones. 
-            Se observa que el {int(pos/vol*100)}% de la conversación es favorable, mientras que un {int(neg/vol*100)}% presenta riesgos reputacionales.
+            ANÁLISIS NARRATIVO:
+            Durante el ciclo analizado, el motor Sentinel ha capturado un volumen de {tot} menciones. El clima de opinión es predominantemente {('Positivo' if pos>neg else 'Negativo')}, 
+            presentando una favorabilidad del {p_perc}%. Se ha detectado una intensa actividad en la fuente '{df['Fuente'].mode()[0]}'.
             
-            La fuente predominante en este periodo ha sido '{df['Fuente'].mode()[0]}', centrando la atención en el sector de {df['Lugar'].mode()[0]}.
-            Se detecta una fuerte vinculación entre los conceptos de {extra_kw} y el objetivo analizado. 
-            Se recomienda encarecidamente fortalecer la presencia en medios regionales para mitigar los focos de negatividad detectados.
+            FOCOS TERRITORIALES:
+            La conversación gira principalmente sobre {df['Lugar'].mode()[0]}, donde los conceptos de {ext_kw} han generado mayor tracción. 
+            Es imperativo monitorear los focos críticos detectados en redes sociales para prevenir escaladas.
             
-            Este informe constituye un resumen técnico avanzado para la toma de decisiones.
-            Generado por Vecinos La Serena spa.
+            RECOMENDACIÓN:
+            {'Mantener la línea comunicacional actual.' if p_perc > 50 else 'Activar protocolo de respuesta en prensa regional y mitigar comentarios en TikTok/Reddit.'}
+            
+            Informe generado por Sentinel Engine v18.0.
             """
-            st.text_area("Vista Previa:", txt, height=400)
+            st.text_area("Borrador:", txt_ia, height=400)
             
-            pdf = FPDF(); pdf.add_page(); pdf.set_font("Arial", size=12)
-            pdf.multi_cell(0, 7, txt.encode('latin-1','replace').decode('latin-1'))
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf"); pdf.output(tmp.name)
-            with open(tmp.name, "rb") as f: st.download_button("📥 DESCARGAR PDF", f, "Informe_Faro.pdf")
+            # Gráfico para PDF
+            fig_p, ax = plt.subplots(figsize=(6,4))
+            df['Sentimiento'].value_counts().plot(kind='bar', ax=ax, color=['#10b981','#ef4444','#f59e0b'])
+            plt.tight_layout()
+            buf = io.BytesIO(); plt.savefig(buf, format='png'); buf.seek(0)
+
+            pdf = FPDF()
+            pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "REPORTE EL FARO", 0, 1, 'C')
+            pdf.set_font("Arial", size=10); pdf.cell(0, 10, f"Rango: {f_ini} - {f_fin}", 0, 1, 'C')
+            pdf.ln(10); pdf.set_font("Arial", size=11); pdf.multi_cell(0, 8, txt_ia.encode('latin-1','replace').decode('latin-1'))
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f_img:
+                f_img.write(buf.getvalue()); pdf.image(f_img.name, x=50, w=110)
+            
+            tmp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            pdf.output(tmp_pdf.name)
+            with open(tmp_pdf.name, "rb") as f: st.download_button("📥 BAJAR PDF", f, "Informe_Faro_Titan.pdf")
 else:
-    st.info("👋 Radar en espera. Configura tu proyecto y enciende El Faro.")
+    st.info("👋 Pulse ENCENDER EL FARO para iniciar el escaneo profundo.")
