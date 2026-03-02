@@ -19,9 +19,10 @@ import io
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
-st.set_page_config(page_title="El Faro | Legacy Stability", layout="wide", page_icon="lighthouse")
+st.set_page_config(page_title="El Faro | Legacy Premium", layout="wide", page_icon="lighthouse")
 
 # --- 2. GESTIÓN DE DATOS BLINDADA (AUTO-REPARACIÓN) ---
+# Columnas obligatorias para evitar KeyError
 REQUIRED_COLS = ['Fecha', 'Fuente', 'Titular', 'Link', 'Sentimiento', 'Alcance', 'Interacciones', 'Vibra', 'Lugar', 'Tipo']
 
 if 'data_master' not in st.session_state:
@@ -168,11 +169,15 @@ if not df.empty:
     
     # KPIs FORZADOS A BLANCO
     k1, k2, k3, k4 = st.columns(4)
+    vol = len(df)
+    alc = df['Alcance'].sum()
+    inter = df['Interacciones'].sum()
+    pos_perc = int(len(df[df.Sentimiento.str.contains("Positivo")])/len(df)*100) if len(df) > 0 else 0
+    k4.metric("FAVORABILIDAD", f"{pos_perc}%")
+    
     k1.metric("MENCIONES TOTALES", len(df))
     k2.metric("ALCANCE (IMP)", f"{df['Alcance'].sum()/1000000:.1f}M")
     k3.metric("INTERACCIONES", f"{df['Interacciones'].sum()/1000:.1f}K")
-    pos_perc = int(len(df[df.Sentimiento.str.contains("Positivo")])/len(df)*100) if len(df) > 0 else 0
-    k4.metric("FAVORABILIDAD", f"{pos_perc}%")
     
     tabs = st.tabs(["📊 ESTRATEGIA", "🎭 EMOCIONES", "🗺️ TÁCTICO", "🌪️ EMBUDO", "📝 ANTECEDENTES", "📄 REPORTE"])
     
@@ -219,7 +224,8 @@ if not df.empty:
             st.plotly_chart(fig_r, use_container_width=True)
         with c4:
             st.markdown("### 🥧 Share de Medios")
-            fig_p = px.pie(df, names='Fuente', hole=0.5, color_discrete_sequence=px.colors.sequential.Cyan)
+            # CORRECCIÓN DE ERROR: Usar paleta segura
+            fig_p = px.pie(df, names='Fuente', hole=0.5, color_discrete_sequence=['#00F0FF', '#0074D9', '#7FDBFF', '#39CCCC'])
             fig_p.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_p, use_container_width=True)
 
