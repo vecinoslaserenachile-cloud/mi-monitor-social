@@ -21,7 +21,7 @@ import streamlit.components.v1 as components
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Sentinel Onyx", layout="wide", page_icon="⚓")
 
-# --- 2. GESTIÓN DE DATOS BLINDADA ---
+# --- 2. MEMORIA BLINDADA ---
 REQUIRED_COLS = ['Fecha', 'Fuente', 'Titular', 'Link', 'Sentimiento', 'Alcance', 'Interacciones', 'Vibra', 'Lugar', 'Tipo']
 if 'data_master' not in st.session_state:
     st.session_state.data_master = pd.DataFrame(columns=REQUIRED_COLS)
@@ -35,14 +35,14 @@ if not st.session_state.data_master.empty:
 if 'proyectos' not in st.session_state: st.session_state.proyectos = {}
 if 'search_active' not in st.session_state: st.session_state.search_active = False
 
-# --- 3. ESTILOS ONYX (FIX VISIBILIDAD SIDEBAR) ---
+# --- 3. ESTILOS ONYX (FIX VISIBILIDAD & SIDEBAR) ---
 speed = "2s" if st.session_state.search_active else "12s"
 
 st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
     
-    /* 1. FONDO NEGRO GLOBAL (APP + SIDEBAR) */
+    /* 1. FONDO NEGRO GLOBAL (APP + SIDEBAR) - CRÍTICO PARA VER TEXTO BLANCO */
     .stApp {{ background-color: #000000 !important; }}
     [data-testid="stSidebar"] {{ 
         background-color: #050505 !important; 
@@ -175,7 +175,7 @@ with st.sidebar:
     components.html(faro_html, height=200)
     
     st.title("EL FARO")
-    st.caption("Sentinel Onyx v41.0")
+    st.caption("Sentinel Onyx v42.0")
     
     obj_in = st.text_input("Objetivo", "Daniela Norambuena")
     
@@ -235,8 +235,9 @@ if not df.empty:
         with c2:
             st.markdown("### 📈 Tendencia")
             daily = df.groupby('Fecha').size().reset_index(name='Menciones')
+            # FIX DEL ERROR: Simplificación de estilos
             fig_line = px.area(daily, x='Fecha', y='Menciones', template="plotly_dark")
-            fig_line.update_traces(line_color='#00F0FF', fill_color='rgba(0, 240, 255, 0.2)')
+            fig_line.update_traces(line_color='#00F0FF') # Solución segura
             fig_line.update_layout(height=500, paper_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_line, use_container_width=True)
             
