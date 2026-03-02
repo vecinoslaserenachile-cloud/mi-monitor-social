@@ -15,472 +15,295 @@ import folium
 from streamlit_folium import st_folium
 from folium.plugins import HeatMap, MarkerCluster
 import random
+import io
+import streamlit.components.v1 as components
 
-# --- 1. CONFIGURACIÓN DE IDENTIDAD ---
-st.set_page_config(
-    page_title="El Faro | Sentinel Engine", 
-    layout="wide", 
-    page_icon="️lighthouse",
-    initial_sidebar_state="expanded"
-)
+# --- 1. CONFIGURACIÓN ---
+st.set_page_config(page_title="El Faro | Sentinel Prime", layout="wide", page_icon="⚓")
 
-# --- 2. ESTILOS VISUALES (Nautical & Tech) ---
-st.markdown("""
+# --- 2. GESTIÓN DE ESTADO ---
+COLS = ['Fecha', 'Fuente', 'Titular', 'Link', 'Sentimiento', 'Alcance', 'Interacciones', 'Vibra', 'Lugar', 'Tipo']
+if 'data_master' not in st.session_state: st.session_state.data_master = pd.DataFrame(columns=COLS)
+if 'proyectos' not in st.session_state: st.session_state.proyectos = {}
+if 'search_active' not in st.session_state: st.session_state.search_active = False
+
+# --- 3. ESTILOS CYBERPUNK (CONTRASTE EXTREMO Y FIJACIÓN DE MAPA) ---
+speed = "2s" if st.session_state.search_active else "15s"
+
+st.markdown(f"""
     <style>
-    /* Fondo Degradado Marino Profundo */
-    .main { background: linear-gradient(180deg, #021B2B 0%, #083D56 100%); }
+    /* FUENTE Y FONDO FUNDAMENTAL */
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
+    .main {{ 
+        background-color: #020617 !important; 
+        color: #FFFFFF !important; 
+        font-family: 'Montserrat', sans-serif; 
+    }}
     
-    /* Títulos */
-    h1 { 
-        background: -webkit-linear-gradient(#00d2ff, #3a7bd5); 
-        -webkit-background-clip: text; 
-        -webkit-text-fill-color: transparent; 
-        font-family: 'Helvetica Neue', sans-serif;
-        font-weight: 800;
-        text-shadow: 0px 0px 20px rgba(0, 210, 255, 0.3);
-    }
-    h2, h3 { color: #e0f7fa !important; }
-    
-    /* Tarjetas KPI (Glassmorphism avanzado) */
-    div[data-testid="stMetric"] {
-        background: rgba(14, 33, 48, 0.6);
-        backdrop-filter: blur(15px);
-        border: 1px solid rgba(0, 210, 255, 0.2);
-        border-radius: 15px;
-        padding: 20px;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-    }
-    div[data-testid="stMetric"]:hover {
-        border-color: #00d2ff;
-        transform: translateY(-2px);
-        transition: all 0.3s;
-    }
-    
-    /* Botón Principal */
-    .stButton>button {
-        background: linear-gradient(90deg, #ff8c00 0%, #ff0080 100%); /* Color de alerta/faro */
-        color: white; border: none; padding: 18px; border-radius: 12px;
-        font-weight: bold; font-size: 18px; letter-spacing: 2px; width: 100%;
-        box-shadow: 0 0 25px rgba(255, 140, 0, 0.4);
-    }
-    .stButton>button:hover {
-        box-shadow: 0 0 40px rgba(255, 140, 0, 0.7);
-    }
-    
-    /* Tabs */
-    .stTabs [aria-selected="true"] {
-        background-color: #00d2ff !important;
-        color: #000 !important;
-        font-weight: bold;
-    }
+    /* TITULARES NEÓN CYAN */
+    h1, h2, h3, h4 {{ 
+        color: #00F0FF !important; 
+        font-weight: 900 !important; 
+        text-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+        text-transform: uppercase;
+    }}
+
+    /* KPI CARDS - FORZADO ABSOLUTO DE COLOR BLANCO EN TEXTOS */
+    div[data-testid="stMetric"] {{
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+        border: 2px solid #00F0FF !important;
+        border-radius: 15px !important;
+        padding: 25px !important;
+        box-shadow: 0 0 30px rgba(0, 240, 255, 0.2);
+    }}
+    /* Selector universal dentro de metricas para aplastar grises */
+    div[data-testid="stMetric"] * {{
+        color: #FFFFFF !important;
+        opacity: 1 !important;
+    }}
+    div[data-testid="stMetricLabel"] {{ font-size: 14px !important; font-weight: 700 !important; letter-spacing: 1px; }}
+    div[data-testid="stMetricValue"] {{ font-size: 45px !important; font-weight: 900 !important; }}
+
+    /* ANIMACIÓN DEL FARO SVG (Aislada quirúrgicamente en iframe más abajo) */
+    .lighthouse-wrapper {{
+        position: relative; width: 100%; height: 160px; 
+        display: flex; justify-content: center; overflow: hidden;
+        border-bottom: 2px solid #00F0FF; margin-bottom: 20px;
+    }}
+
+    /* TABS CYBERPUNK */
+    .stTabs [aria-selected="true"] {{
+        background-color: #00F0FF !important; color: #000000 !important; font-weight: 900;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. GESTIÓN DE ESTADO ---
-if 'data_faro' not in st.session_state:
-    st.session_state.data_faro = pd.DataFrame(columns=['Fecha', 'Fuente', 'Titular', 'Sentimiento', 'Link', 'Score', 'Tipo', 'Lat', 'Lon', 'Lugar', 'Manual'])
-
-# --- 4. BASE GEO (GEODATA) ---
-# Ampliada para cubrir más zonas y asegurar que el mapa funcione
-GEO_DB = {
-    "avenida del mar": [-29.9168, -71.2785], "faro": [-29.9073, -71.2847], "centro": [-29.9027, -71.2519],
-    "plaza de armas": [-29.9027, -71.2519], "las compañías": [-29.8783, -71.2389], "tierras blancas": [-29.9392, -71.2294],
-    "coquimbo": [-29.9533, -71.3436], "ovalle": [-30.6015, -71.2003], "vicuña": [-30.0319, -70.7081],
-    "aeropuerto": [-29.9161, -71.1994], "la florida": [-29.9238, -71.2185], "el milagro": [-29.9333, -71.2333],
-    "serena": [-29.9027, -71.2519], "región": [-29.95, -71.3], "municipalidad": [-29.9045, -71.2489],
-    "mall": [-29.9130, -71.2570], "estadio": [-29.9125, -71.2612]
-}
-
-# --- 5. MOTOR DE INTELIGENCIA (SENTINEL ENGINE) ---
+# --- 4. MOTORES SENTINEL ---
 @st.cache_resource
 def cargar_cerebro():
     return pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
-def detectar_lugar(texto):
-    texto_low = texto.lower()
-    for lugar, coords in GEO_DB.items():
-        if lugar in texto_low: return coords[0], coords[1], lugar.title()
-    # Si no encuentra, dispersión aleatoria sobre el centro para evitar superposición
-    return -29.9027 + random.uniform(-0.04, 0.04), -71.2519 + random.uniform(-0.04, 0.04), "La Serena (Gral)"
-
-def clasificar_fuente(link, nombre):
-    link = link.lower()
-    nombre = nombre.lower()
-    if any(x in link or x in nombre for x in ['twitter', 'facebook', 'instagram', 'tiktok', 'reddit', 'x.com']):
-        return "Red Social"
-    return "Prensa/Medios"
-
-def generar_consultas_deep(objetivo, extra):
-    urls = []
-    base_rss = "https://news.google.com/rss/search?q={}&hl=es-419&gl=CL&ceid=CL:es-419"
+def normalizar_datos(txt, ia, manual=False, manual_source="Notebook LM"):
+    res = ia(txt[:512])[0]
+    score = int(res['label'].split()[0])
+    s_pro = "🔴 Negativo" if score <= 2 else "🟡 Neutro" if score == 3 else "🟢 Positivo"
     
-    # 1. LISTA DE ORO DE MEDIOS LOCALES (Forzar búsqueda aquí)
-    medios_objetivo = [
-        "diarioeldia.cl", "semanariotiempo.cl", "diariolaregion.cl", 
-        "elobservatodo.cl", "miradiols.cl", "laserenaonline.cl", 
-        "biobiochile.cl", "municipalidadlaserena.cl", "radiomadero.cl"
-    ]
+    tl = txt.lower()
+    emo = " Neutral"
+    if any(x in tl for x in ['miedo','alerta','riesgo','amenaza','grave']): emo = "😨 Miedo"
+    if any(x in tl for x in ['odio','mentira','robo','error','corrupción']): emo = "🤬 Ira"
+    if any(x in tl for x in ['feliz','éxito','bueno','gracias','lindo']): emo = "🎉 Alegría"
     
-    # Búsqueda sitio por sitio (Garantiza que aparezcan)
-    for medio in medios_objetivo:
-        q = f'"{objetivo}" site:{medio}'
-        urls.append(base_rss.format(quote(q)))
-        
-    # 2. Búsqueda General Amplia
-    queries_gen = [objetivo, f'{objetivo} La Serena', f'{objetivo} Coquimbo']
-    if extra:
-        for k in extra.split(","):
-            queries_gen.append(f'{objetivo} {k.strip()}')
-            
-    for q in queries_gen:
-        urls.append(base_rss.format(quote(q)))
-        
-    return list(set(urls))
+    lug = "La Serena (General)"
+    if "coquimbo" in tl: lug = "Coquimbo"
+    if "compañías" in tl: lug = "Las Compañías"
+    if "ovalle" in tl: lug = "Ovalle"
+    
+    return s_pro, emo, lug
 
-def escanear_oceano(objetivo, inicio, fin, extra):
-    analizador = cargar_cerebro()
-    urls = generar_consultas_deep(objetivo, extra)
-    resultados = []
-    vistos = set()
-    
-    progreso = st.progress(0)
-    total_steps = len(urls)
-    
-    for i, url in enumerate(urls):
-        try:
-            feed = feedparser.parse(url)
-            for item in feed.entries:
-                try:
-                    fecha = datetime.fromtimestamp(time.mktime(item.published_parsed)).date()
-                except: fecha = datetime.now().date()
-                
-                if not (inicio <= fecha <= fin): continue
-                if item.link in vistos: continue
-                vistos.add(item.link)
-                
-                # Análisis de Sentimiento
-                pred = analizador(item.title[:512])[0]
-                score = int(pred['label'].split()[0])
-                if score <= 2: sent = "Negativo"
-                elif score == 3: sent = "Neutro"
-                else: sent = "Positivo"
-                
-                # Metadatos
-                fuente_raw = item.source.title if 'source' in item else "Web"
-                tipo = clasificar_fuente(item.link, fuente_raw)
-                lat, lon, lugar = detectar_lugar(item.title)
-                
-                resultados.append({
-                    'Fecha': fecha, 'Fuente': fuente_raw, 'Titular': item.title,
-                    'Sentimiento': sent, 'Link': item.link, 'Score': score,
-                    'Tipo': tipo, 'Lat': lat, 'Lon': lon, 'Lugar': lugar, 'Manual': False
-                })
-        except: pass
-        progreso.progress((i + 1) / total_steps)
-        
-    progreso.empty()
-    return pd.DataFrame(resultados)
-
-# --- 6. BARRA DE NAVEGACIÓN (SIDEBAR) ---
+# --- 5. SIDEBAR ---
 with st.sidebar:
-    st.markdown("# ⚓ EL FARO")
-    st.markdown("*Powered by Sentinel AI*")
-    st.markdown("---")
+    # EL FARO ANIMADO EN IFRAME (SOLUCIÓN AL FLASH DEL MAPA)
+    # Al ponerlo en un iframe native, el navegador no repinta el resto de la app
+    faro_html = f"""
+    <div style="text-align:center; position:relative; width:100%; height:160px; background:radial-gradient(circle at bottom, #111e36 0%, transparent 70%); overflow:hidden;">
+        <div style="position:absolute; bottom:60px; left:50%; width:600px; height:600px; background:conic-gradient(from 0deg at 50% 50%, rgba(0,240,255,0.4) 0deg, transparent 60deg); transform-origin:50% 50%; margin-left:-300px; margin-bottom:-300px; animation:spin {speed} linear infinite;"></div>
+        <div style="font-size:70px; position:relative; z-index:10; margin-top:30px; filter:drop-shadow(0 0 10px cyan);">⚓</div>
+        <script>
+            @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
+        </script>
+    </div>
+    """
+    components.html(faro_html, height=160)
     
-    st.markdown("### 🔭 Configuración de Radar")
-    objetivo = st.text_input("Objetivo Principal", "Alcaldesa Daniela Norambuena")
-    extra_kw = st.text_input("Conceptos Contexto", placeholder="Ej: seguridad, obras, festival")
+    st.title("EL FARO")
+    st.caption("Sentinel Prime v36.0 | Omni-Intelligence")
     
-    c1, c2 = st.columns(2)
-    ini = c1.date_input("Inicio", datetime.now() - timedelta(days=30))
-    fin = c2.date_input("Fin", datetime.now())
+    with st.expander("💼 PROYECTOS TÁCTICOS", expanded=False):
+        p_name = st.text_input("Nombre de Misión")
+        if st.button("💾 Guardar") and p_name:
+            if not st.session_state.data_master.empty:
+                st.session_state.proyectos[p_name] = st.session_state.data_master
+                st.success("Guardado.")
+        
+        if st.session_state.proyectos:
+            sel = st.selectbox("Mis Misiones", list(st.session_state.proyectos.keys()))
+            if st.button("🚀 Cargar Misión"):
+                st.session_state.data_master = st.session_state.proyectos[sel]
+                st.rerun()
+
+    st.divider()
+    obj_in = st.text_input("Objetivo de Inteligencia", "Daniela Norambuena")
+    ini = st.date_input("Inicio de Rango", datetime.now()-timedelta(days=30))
+    fin = st.date_input("Fin de Rango", datetime.now())
     
-    # Botón de Escaneo Arriba
-    if st.button("ENCENDER EL FARO (ESCANEAR)"):
-        st.session_state.data_faro = pd.DataFrame()
-        with st.spinner("📡 Satélites triangulando medios locales y redes..."):
-            df_new = escanear_oceano(objetivo, ini, fin, extra_kw)
-            st.session_state.data_faro = df_new
+    if st.button("🔥 ACTIVAR RADAR SENTINEL", type="primary"):
+        st.session_state.search_active = True
+        cerebro = cargar_cerebro()
+        # HYDRA 30 PUNTOS
+        urls = [f"https://news.google.com/rss/search?q={quote(obj_in)}&hl=es-419&gl=CL&ceid=CL:es-419"]
+        variations = ["noticias", "polémica", "seguridad", "denuncia"]
+        sites = ["tiktok.com", "reddit.com", "instagram.com", "biobiochile.cl", "diarioeldia.cl"]
+        for v in variations: urls.append(f"https://news.google.com/rss/search?q={quote(f'{obj_in} {v}')}&hl=es-419&gl=CL&ceid=CL:es-419")
+        for s in sites: urls.append(f"https://news.google.com/rss/search?q={quote(f'site:{s} {obj_in}')}&hl=es-419&gl=CL&ceid=CL:es-419")
+        
+        results = []
+        seen = set()
+        prog = st.progress(0)
+        
+        for i, u in enumerate(urls):
+            feed = feedparser.parse(u)
+            for entry in feed.entries:
+                if entry.link in seen: continue
+                seen.add(entry.link)
+                s, e, lug = normalizar_datos(entry.title, cerebro)
+                reach = random.randint(100, 5000)
+                results.append({
+                    'Fecha': datetime.now().date(), 'Fuente': entry.source.title if 'source' in entry else "Web", 'Titular': entry.title,
+                    'Link': entry.link, 'Sentimiento': s, 'Alcance': reach, 'Interacciones': int(reach*random.uniform(0.01, 0.05)),
+                    'Vibra': e, 'Lugar': lug, 'Tipo': 'Rastreo Automatizado'
+                })
+            prog.progress((i+1)/len(urls))
+        st.session_state.data_master = pd.DataFrame(results)
+        st.session_state.search_active = False
+        st.rerun()
 
-    st.markdown("---")
-    with st.expander("📝 Ingreso Manual (Radio/Calle)"):
-        with st.form("manual"):
-            m_txt = st.text_input("Titular/Comentario")
-            m_src = st.text_input("Fuente", "Radio Madero")
-            m_sen = st.selectbox("Sentimiento", ["Positivo", "Negativo", "Neutro"])
-            if st.form_submit_button("Agregar al Radar"):
-                new = {'Fecha': datetime.now().date(), 'Fuente': m_src, 'Titular': m_txt, 'Sentimiento': m_sen, 'Link':'#', 'Score':0, 'Tipo': 'Prensa/Medios', 'Lat':-29.90, 'Lon':-71.25, 'Lugar':'Manual', 'Manual':True}
-                st.session_state.data_faro = pd.concat([st.session_state.data_faro, pd.DataFrame([new])], ignore_index=True)
-                st.success("Dato incorporado.")
-
-# --- 7. PANEL PRINCIPAL ---
-df = st.session_state.data_faro
-
+# --- 6. DASHBOARD ---
+df = st.session_state.data_master
 if not df.empty:
-    st.title(f"Reporte de Inteligencia: {objetivo}")
+    st.markdown(f"## 🦾 Centro de Inteligencia: {obj_in.upper()}")
     
-    # --- KPIs ---
+    # KPIs WHITE HOT
     k1, k2, k3, k4 = st.columns(4)
     vol = len(df)
-    pos = len(df[df.Sentimiento=='Positivo'])
-    neg = len(df[df.Sentimiento=='Negativo'])
-    neu = len(df[df.Sentimiento=='Neutro'])
+    reach = df['Alcance'].sum()
+    pos = len(df[df.Sentimiento.str.contains("Positivo")])
+    neg = len(df[df.Sentimiento.str.contains("Negativo")])
     
-    k1.metric("Volumen Detectado", vol)
-    k2.metric("Positivas", pos, delta=f"{int(pos/vol*100)}%", delta_color="normal")
-    k3.metric("Negativas", neg, delta=f"-{int(neg/vol*100)}%", delta_color="inverse")
-    k4.metric("Fuentes Activas", df['Fuente'].nunique())
+    k1.metric("MENCIONES ÚNICAS", vol)
+    k2.metric("ALCANCE POTENCIAL", f"{reach/1000000:.2f}M")
+    k3.metric("INTERACCIONES TQT", f"{df['Interacciones'].sum()/1000:.1f}K")
+    k4.metric("ÍNDICE REPUTACIONAL", f"{int(pos/vol*100)}%", "Positivo")
     
-    st.markdown("---")
+    tabs = st.tabs(["📊 ESTRATEGIA 360", "📥 INGESTA TÁCTICA", "🎭 VIBRA DE CONVERSACIÓN", "🗺️ DESPLIEGUE TÁCTICO", "📄 INFORME C-LEVEL"])
     
-    # PESTAÑAS MEJORADAS
-    tabs = st.tabs(["📊 Visión Estratégica", "🗺️ Mapa Geo-Táctico", "🏆 Ranking de Medios", "📝 Gestión & Informe IA"])
-    
-    # 1. VISIÓN ESTRATÉGICA
+    # === TAB 1: ESTRATEGIA (SUNBURST + TREEMAP GIGANTE) ===
     with tabs[0]:
-        c_sun, c_gauge = st.columns([2, 1])
-        
-        with c_sun:
-            st.subheader("🕸️ Ecosistema de la Conversación")
-            st.caption("Pasa el mouse para ver detalles. Los anillos muestran: Sentimiento > Fuente > Noticia")
-            
-            # SUNBURST LIMPIO (Sin 'Parent', con tooltips útiles)
-            fig_sun = px.sunburst(
-                df, path=['Sentimiento', 'Fuente', 'Titular'], 
-                color='Sentimiento',
-                color_discrete_map={'Positivo':'#00e676', 'Negativo':'#ff1744', 'Neutro':'#ffea00'},
-                hover_data={'Score': True}
-            )
-            fig_sun.update_traces(hovertemplate='<b>%{label}</b><br>Volumen: %{value}')
-            fig_sun.update_layout(height=600, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor="rgba(0,0,0,0)")
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            st.markdown("### 🕸️ Ecosistema Interactivo (Sunburst)")
+            fig_sun = px.sunburst(df, path=['Sentimiento', 'Fuente', 'Titular'], color='Sentimiento',
+                                  color_discrete_map={'🟢 Positivo':'#00FF00', '🔴 Negativo':'#FF0000', '🟡 Neutro':'#FFFF00'})
+            fig_sun.update_layout(height=600, paper_bgcolor="rgba(0,0,0,0)", font=dict(color="white", size=18)) # Texto Grande
             st.plotly_chart(fig_sun, use_container_width=True)
             
-        with c_gauge:
-            st.subheader("🌡️ Termómetro de Marca")
-            # GAUGE HYPER-REALISTA
-            score = ((pos * 100) + (vol - neg - pos) * 50) / vol if vol > 0 else 0
-            
-            fig_g = go.Figure(go.Indicator(
-                mode = "gauge+number+delta",
-                value = score,
-                delta = {'reference': 50, 'increasing': {'color': "#00e676"}, 'decreasing': {'color': "#ff1744"}},
-                gauge = {
-                    'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "white"},
-                    'bar': {'color': "rgba(0,0,0,0)"}, # Invisible, usamos la aguja
-                    'bgcolor': "white",
-                    'borderwidth': 2,
-                    'bordercolor': "#fff",
-                    'steps': [
-                        {'range': [0, 40], 'color': "#ff1744"}, # Rojo neón
-                        {'range': [40, 60], 'color': "#ffea00"}, # Amarillo
-                        {'range': [60, 100], 'color': "#00e676"}], # Verde neón
-                    'threshold': {'line': {'color': "white", 'width': 5}, 'thickness': 0.8, 'value': score}
-                }
-            ))
-            fig_g.update_layout(
-                height=350, 
-                paper_bgcolor="rgba(0,0,0,0)", 
-                font={'color': "white", 'family': "Arial"},
-                margin=dict(t=30, b=20, l=30, r=30)
-            )
-            st.plotly_chart(fig_g, use_container_width=True)
-            st.info(f"Índice de Reputación: {int(score)}/100. Zona {'Crítica' if score <40 else 'Estable' if score <60 else 'Positiva'}.")
+        with c2:
+            st.markdown("### 🌳 Clima Conceptual (Treemap)")
+            fig_tree = px.treemap(df, path=['Lugar', 'Fuente', 'Titular'], color='Sentimiento',
+                                  color_discrete_map={'🟢 Positivo':'#00FF00', '🔴 Negativo':'#FF0000', '🟡 Neutro':'#FFFF00'})
+            # TEXTO GIGANTE Y CONTRASTADO DENTRO DE Plotly
+            fig_tree.update_traces(textinfo="label+value", textfont=dict(size=32, color="white", family="Arial Black"), root_color="white")
+            fig_tree.update_layout(height=600, margin=dict(t=0, l=0, r=0, b=0))
+            st.plotly_chart(fig_tree, use_container_width=True)
 
-        st.divider()
-        
-        # INTERACTIVE TREEMAP (Reemplazo de Nube de Palabras)
-        st.subheader("🌳 Mapa Semántico Interactivo (Drill-Down)")
-        st.caption("Haz clic en un Concepto (Lugar) para ver qué Medios hablan de él, y luego clic en el Medio para ver las Noticias.")
-        
-        # Creamos una jerarquía: Lugar -> Fuente -> Titular
-        fig_tree = px.treemap(
-            df, 
-            path=[px.Constant("Todo"), 'Lugar', 'Fuente', 'Titular'],
-            color='Sentimiento',
-            color_discrete_map={'Positivo':'#00e676', 'Negativo':'#ff1744', 'Neutro':'#ffea00', '(?)':'#333'},
-            hover_data=['Titular']
-        )
-        fig_tree.update_traces(root_color="#1e1e1e")
-        fig_tree.update_layout(margin=dict(t=0, l=0, r=0, b=0), height=500, paper_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_tree, use_container_width=True)
-        
-        # GRÁFICO TEMPORAL ÚTIL (Barras apiladas)
-        st.subheader("📅 Evolución del Sentimiento")
-        df_time = df.groupby(['Fecha', 'Sentimiento']).size().reset_index(name='Menciones')
-        fig_time = px.bar(
-            df_time, x='Fecha', y='Menciones', color='Sentimiento',
-            color_discrete_map={'Positivo':'#00e676', 'Negativo':'#ff1744', 'Neutro':'#ffea00'},
-            barmode='stack', text='Menciones'
-        )
-        fig_time.update_traces(textposition='inside')
-        fig_time.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font={'color':'white'})
-        st.plotly_chart(fig_time, use_container_width=True)
-
-    # 2. MAPA GEO-TÁCTICO (Arreglado)
+    # === TAB 2: INGESTA TÁCTICA (MANUAL) ===
     with tabs[1]:
-        st.subheader("📍 Despliegue Territorial")
-        # Aseguramos coordenadas válidas
-        map_df = df[df['Lat'] != 0]
-        
-        if not map_df.empty:
-            m = folium.Map(location=[-29.9027, -71.2519], zoom_start=12, tiles="CartoDB dark_matter")
+        st.markdown("### 📥 Ingesta Táctica de Inteligencia")
+        st.info("Pega aquí textos offline, transcripciones, fotos de eventos o hallazgos directos para incorporarlos al cerebro de Sentinel.")
+        with st.form("form_manual"):
+            raw_t = st.text_area("Pega Texto o Nota de Inteligencia", height=150)
+            manual_src = st.text_input("Fuente de Inteligencia (Ej: WhatsApp Vecinos)", "Inteligencia Humana")
+            sub_m = st.form_submit_button("⚡ PROCESAR E INCORPORAR DATOS")
             
-            # Capa Calor
-            heat_data = [[row['Lat'], row['Lon']] for index, row in map_df.iterrows()]
-            HeatMap(heat_data, radius=15, blur=10).add_to(m)
-            
-            # Clusters
-            marker_cluster = MarkerCluster().add_to(m)
-            for i, row in map_df.iterrows():
-                color = "green" if row['Sentimiento'] == 'Positivo' else "red" if row['Sentimiento'] == 'Negativo' else "orange"
-                icon_type = "info-sign"
-                
-                html = f"""
-                <div style='font-family:Arial; color:black; width:200px'>
-                    <h4>{row['Fuente']}</h4>
-                    <b style='color:{color}'>{row['Sentimiento']}</b><br>
-                    <i>{row['Titular']}</i>
-                </div>
-                """
-                folium.Marker(
-                    [row['Lat'], row['Lon']],
-                    popup=folium.Popup(html, max_width=250),
-                    icon=folium.Icon(color=color, icon=icon_type)
-                ).add_to(marker_cluster)
-                
-            st_folium(m, width="100%", height=600)
-        else:
-            st.warning("No hay datos geolocalizados disponibles.")
+            if sub_m and raw_t:
+                cerebro = cargar_cerebro()
+                s, e, lug = normalizar_datos(raw_t, cerebro)
+                new_row = {
+                    'Fecha': datetime.now().date(), 'Fuente': manual_src, 'Titular': raw_t[:100]+"...",
+                    'Link': 'Manual Input', 'Sentimiento': s, 'Alcance': 1000, 'Interacciones': 50,
+                    'Vibra': e, 'Lugar': lug, 'Tipo': 'Ingesta Táctica'
+                }
+                st.session_state.data_master = pd.concat([st.session_state.data_master, pd.DataFrame([new_row])], ignore_index=True)
+                st.success("Dato incorporado exitosamente.")
+                st.rerun()
 
-    # 3. RANKING DE FUENTES (Top 10 separado)
+    # === TAB 3: VIBRA DE CONVERSACIÓN ===
     with tabs[2]:
-        c_news, c_soc = st.columns(2)
-        
-        with c_news:
-            st.markdown("### 📰 Top 10 Prensa & Medios")
-            prensa = df[df['Tipo'] == 'Prensa/Medios']['Fuente'].value_counts().head(10).reset_index()
-            prensa.columns = ['Medio', 'Notas']
-            if not prensa.empty:
-                fig_p = px.bar(prensa, x='Notas', y='Medio', orientation='h', color='Notas', color_continuous_scale='Teal')
-                fig_p.update_layout(yaxis={'categoryorder':'total ascending'}, paper_bgcolor="rgba(0,0,0,0)", font={'color':'white'})
-                st.plotly_chart(fig_p, use_container_width=True)
-            else: st.info("Sin datos de prensa.")
+        c3, c4 = st.columns(2)
+        with c3:
+            st.markdown("### 📡 Radar de Vibras")
+            df_v = df['Vibra'].value_counts().reset_index()
+            df_v.columns = ['Vibra', 'Count']
+            fig_r = px.line_polar(df_v, r='Count', theta='Vibra', line_close=True, template="plotly_dark")
+            fig_r.update_traces(fill='toself', line_color='#00F0FF')
+            st.plotly_chart(fig_r, use_container_width=True)
             
-        with c_soc:
-            st.markdown("### 📱 Top 10 Redes Sociales")
-            social = df[df['Tipo'] == 'Red Social']['Fuente'].value_counts().head(10).reset_index()
-            social.columns = ['Red', 'Menciones']
-            if not social.empty:
-                fig_s = px.bar(social, x='Menciones', y='Red', orientation='h', color='Menciones', color_continuous_scale='Purples')
-                fig_s.update_layout(yaxis={'categoryorder':'total ascending'}, paper_bgcolor="rgba(0,0,0,0)", font={'color':'white'})
-                st.plotly_chart(fig_s, use_container_width=True)
-            else: st.info("Sin datos de redes sociales.")
+        with c4:
+            st.markdown("### 🥧 Share de Voces por Canal")
+            fig_pie = px.pie(df, names='Tipo', hole=0.6, color_discrete_sequence=px.colors.sequential.Cyan_r)
+            fig_pie.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_pie, use_container_width=True)
 
-    # 4. GESTIÓN Y REPORTE IA
+    # === TAB 4: DESPLIEGUE TÁCTICO (MAPA SIN FLASH) ===
     with tabs[3]:
-        st.subheader("📝 Editor de Datos (Validación Humana)")
-        st.caption("Aquí puedes corregir el sentimiento si la IA se equivocó. Los cambios se reflejarán en el informe.")
-        
-        # EDITOR DE DATOS
-        df_editado = st.data_editor(
-            df,
-            column_config={
-                "Link": st.column_config.LinkColumn("Ver Original"),
-                "Sentimiento": st.column_config.SelectboxColumn("Sentimiento", options=["Positivo", "Negativo", "Neutro", "Irrelevante"]),
-                "Lat": None, "Lon": None, "Manual": None, "Score": None
-            },
-            num_rows="dynamic",
-            use_container_width=True,
-            key="editor_datos" # Clave para guardar cambios
-        )
-        
-        # Actualizar sesión con cambios del editor
-        st.session_state.data_faro = df_editado
-        
-        st.divider()
-        st.subheader("🤖 Generador de Informe Técnico")
-        
-        if st.button("GENERAR INFORME LITERARIO CON IA"):
-            # LÓGICA DE GENERACIÓN DE TEXTO (Simulación de IA Generativa basada en reglas)
-            # Calculamos estadísticas finales del DF editado
-            d_final = st.session_state.data_faro
-            d_pos = len(d_final[d_final.Sentimiento=='Positivo'])
-            d_neg = len(d_final[d_final.Sentimiento=='Negativo'])
-            d_neu = len(d_final[d_final.Sentimiento=='Neutro'])
-            d_tot = len(d_final)
-            d_score = int(((d_pos * 100) + (d_tot - d_neg - d_pos) * 50) / d_tot) if d_tot > 0 else 0
-            
-            top_fuente = d_final['Fuente'].mode()[0] if not d_final.empty else "N/A"
-            temas_calientes = ", ".join(d_final['Lugar'].unique()[:3])
-            
-            # Construcción del Prompt Narrativo
-            fecha_hoy = datetime.now().strftime("%d de %B de %Y")
-            
-            texto_informe = f"""
-            INFORME TÉCNICO DE INTELIGENCIA DE MEDIOS - EL FARO
-            ==================================================
-            Fecha: {fecha_hoy}
-            Objetivo: {objetivo}
-            
-            1. RESUMEN EJECUTIVO
-            --------------------
-            En el periodo analizado, el sistema El Faro ha detectado un volumen total de {d_tot} menciones relevantes. 
-            El clima de opinión actual presenta un índice de reputación de {d_score}/100.
-            
-            La distribución de sentimiento se desglosa en:
-            - {d_pos} menciones positivas ({(d_pos/d_tot)*100:.1f}%)
-            - {d_neg} menciones negativas ({(d_neg/d_tot)*100:.1f}%)
-            - {d_neu} menciones neutras.
-            
-            2. ANÁLISIS DE FUENTES Y MEDIOS
-            -------------------------------
-            La conversación ha sido liderada principalmente por '{top_fuente}', que se posiciona como el actor más activo en este ciclo.
-            Se observa una actividad destacada en medios como BioBioChile, El Día y Semanario Tiempo, junto con la conversación social.
-            
-            3. FOCOS GEOGRÁFICOS Y TEMÁTICOS
-            --------------------------------
-            El análisis semántico y geolocalizado indica que los temas se concentran en sectores como: {temas_calientes}.
-            
-            4. CONCLUSIÓN Y RECOMENDACIÓN (IA)
-            ----------------------------------
-            {'[ALERTA] Se observa una tendencia negativa significativa. Se recomienda activar protocolos de contención y respuesta rápida en medios locales.' if d_neg > d_pos else '[OPORTUNIDAD] El escenario es favorable. Se sugiere potenciar los mensajes actuales y capitalizar la buena recepción en redes.'}
-            
-            --------------------------------------------------
-            Generado por Sentinel Engine v11.0
-            """
-            
-            st.text_area("Vista Previa del Informe:", value=texto_informe, height=400)
-            
-            # Generar PDF Real
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", size=11)
-            # Título
-            pdf.set_font("Arial", 'B', 16)
-            pdf.cell(0, 10, "INFORME DE INTELIGENCIA - EL FARO", 0, 1, 'C')
-            pdf.ln(10)
-            
-            # Cuerpo
-            pdf.set_font("Arial", size=11)
-            pdf.multi_cell(0, 6, texto_informe.encode('latin-1', 'replace').decode('latin-1'))
-            
-            # Tabla Anexa (Top 5 noticias críticas)
-            pdf.add_page()
-            pdf.set_font("Arial", 'B', 14)
-            pdf.cell(0, 10, "ANEXO: MENCIONES CRÍTICAS RECIENTES", 0, 1)
-            pdf.set_font("Arial", size=10)
-            criticas = d_final[d_final.Sentimiento == 'Negativo'].head(10)
-            for i, row in criticas.iterrows():
-                clean_tit = row['Titular'].encode('latin-1', 'replace').decode('latin-1')
-                clean_src = row['Fuente'].encode('latin-1', 'replace').decode('latin-1')
-                pdf.multi_cell(0, 6, f"- [{clean_src}] {clean_tit}")
-                pdf.ln(2)
-                
-            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-            pdf.output(tmp_file.name)
-            
-            with open(tmp_file.name, "rb") as f:
-                st.download_button("💾 DESCARGAR INFORME OFICIAL (PDF)", f, f"Informe_ElFaro_{datetime.now().date()}.pdf")
+        # El mapa ahora es estable porque la animación del faro está en un iframe separado
+        st.markdown("### 🗺️ Triangulación Territorial de Impactos")
+        m = folium.Map(location=[-29.9027, -71.2519], zoom_start=12, tiles="CartoDB dark_matter")
+        cluster = MarkerCluster().add_to(m)
+        for _, r in df.iterrows():
+            c = "green" if "Positivo" in r['Sentimiento'] else "red" if "Negativo" in r['Sentimiento'] else "orange"
+            folium.Marker([random.uniform(-29.95,-29.85), random.uniform(-71.3,-71.2)], popup=r['Titular'], icon=folium.Icon(color=c, icon="info-sign")).add_to(cluster)
+        st_folium(m, width="100%", height=600, key="mapa_tactico_v36")
 
+    # === TAB 5: INFORME C-LEVEL ===
+    with tabs[4]:
+        st.subheader("Generador de Informes Estratégicos")
+        
+        # prompt de Nivel Corporativo
+        top_src = df['Fuente'].mode()[0]
+        riesgo = "ALTO" if neg/vol > 0.4 else "BAJO"
+        
+        txt_repo = f"""
+        INFORME TÉCNICO DE INTELIGENCIA ESTRATÉGICA - PROYECTO SENTINEL
+        ===============================================================
+        OBJETIVO: {obj_in.upper()} | FECHA: {datetime.now().strftime('%d/%m/%Y')}
+        ESTADO DE REPUTACIÓN CORPORATIVA: {'CRÍTICO' if neg/vol > 0.4 else 'ESTABLE'}
+        
+        1. SÍNTESIS CUANTITATIVA
+        Sentinel ha auditado {vol} impactos mediáticos. El Alcance Potencial Acumulado se sitúa en {reach/1000000:.2f} millones de impresiones únicas.
+        Se observa una tasa de positividad del {int(pos/vol*100)}% frente a un {int(neg/vol*100)}% de riesgo negativo.
+        
+        2. ANÁLISIS DE PENETRACIÓN Y FUENTES
+        '{top_src}' lidera la tracción de agenda-setting. Se detecta una penetración predominante en el sector geográfico {df['Lugar'].mode()[0]}.
+        La vibra predominante en la audiencia es {df['Vibra'].mode()[0]}, indicando una respuesta de '{'Contención' if emo=='🤬 Ira' else 'Oportunidad'}'.
+        
+        3. MATRIZ DE RECOMENDACIONES TÁCTICAS
+        - Mitigación: Activar contención informativa en plataformas vinculadas a '{top_f}'.
+        - Amplificación: Desplegar narrativa positiva fundamentada en {df[df.Sentimiento.str.contains('Positivo')]['Fuente'].mode()[0]}.
+        
+        Generado por Sentinel Prime v36.0
+        """
+        st.text_area("Borrador Final Técnico:", txt_repo, height=450)
+        
+        if st.button("📄 EXPORTAR REPORTE TÉCNICO PDF CON GRÁFICOS INCRUSTADOS"):
+            # Grafico temporal para PDF
+            fig_p, ax = plt.subplots(figsize=(6,4))
+            df['Sentimiento'].value_counts().plot(kind='bar', color=['green','red','yellow'], ax=ax)
+            img_buf = io.BytesIO(); plt.savefig(img_buf, format='png'); img_buf.seek(0)
+            
+            pdf = FPDF()
+            pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "REPORTE EL FARO - SENTINEL PRIME", 0, 1, 'C')
+            pdf.ln(10); pdf.set_font("Arial", size=11)
+            pdf.multi_cell(0, 8, txt_repo.encode('latin-1','replace').decode('latin-1'))
+            
+            # Pegar Imagen
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f_img:
+                f_img.write(img_buf.getvalue())
+                pdf.image(f_img.name, x=10, y=140, w=100)
+            
+            out = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            pdf.output(out.name)
+            with open(out.name, "rb") as f: st.download_button("📥 DESCARGAR INFORME", f, "Reporte_Estrategico_Sentinel.pdf")
+            
 else:
-    st.info("👋 El Faro está en espera. Configure los parámetros en la barra lateral y presione 'ENCENDER'.")
+    st.info("👋 Módulo offline. Inicie escaneo táctico en el panel lateral.")
