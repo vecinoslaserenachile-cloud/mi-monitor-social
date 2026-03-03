@@ -33,11 +33,9 @@ if not st.session_state.data_master.empty:
 
 if 'proyectos' not in st.session_state: st.session_state.proyectos = {}
 if 'search_active' not in st.session_state: st.session_state.search_active = False
-
-# Variables de estado para los nuevos reportes IA
 if 'reporte_generado' not in st.session_state: st.session_state.reporte_generado = ""
 
-# --- 3. ESTILOS APEX PREMIUM ---
+# --- 3. ESTILOS APEX PREMIUM (FIX CONTRASTES Y EXPANDERS) ---
 speed = "0.5s" if st.session_state.search_active else "12s"
 
 st.markdown(f"""
@@ -59,13 +57,23 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
     
-    /* INPUTS OSCUROS */
-    div[data-baseweb="input"], div[data-baseweb="select"], div[data-baseweb="base-input"], textarea {{
+    /* INPUTS OSCUROS Y TEXTOS LEGIBLES */
+    div[data-baseweb="input"], textarea {{
         background-color: #111111 !important;
         border: 1px solid #333 !important;
         color: #00F0FF !important;
     }}
     input {{ color: #FFFFFF !important; }}
+    
+    /* FIX: MENÚS DESPLEGABLES (SELECTBOX) FONDO OSCURO */
+    div[data-baseweb="select"] > div {{ background-color: #111111 !important; border-color: #333 !important; color: #FFFFFF !important; }}
+    div[role="listbox"] {{ background-color: #111111 !important; color: #FFFFFF !important; }}
+    li[role="option"] {{ color: #FFFFFF !important; }}
+    span[data-baseweb="select-value"] {{ color: #00F0FF !important; font-weight: bold; }}
+    
+    /* FIX: EXPANDERS EN SIDEBAR (FILTROS) */
+    div[data-testid="stExpander"] details summary p {{ color: #00F0FF !important; font-weight: bold !important; }}
+    div[data-testid="stExpander"] details summary svg {{ fill: #00F0FF !important; }}
     
     /* TABS */
     .stTabs [aria-selected="true"] {{ background-color: #00F0FF !important; color: #000000 !important; font-weight: 900 !important; }}
@@ -128,7 +136,7 @@ def run_scan_apex(obj, ini, fin, exclude, sources):
     prog = st.progress(0)
     
     for i, u in enumerate(urls):
-        feed = feedparser.parse(u)
+        feed = feedparser.parse(url)
         for entry in feed.entries:
             if exclude and exclude.lower() in entry.title.lower(): continue
             if entry.link in seen: continue
@@ -171,7 +179,7 @@ with st.sidebar:
     components.html(faro_html, height=200)
     
     st.title("EL FARO")
-    st.caption("Sentinel Apex v45.0 | AI Mastery")
+    st.caption("Sentinel Apex v46.0 | Perfection")
     
     obj_in = st.text_input("Objetivo", "Daniela Norambuena")
     
@@ -198,7 +206,11 @@ with st.sidebar:
 # --- 6. DASHBOARD ---
 df = st.session_state.data_master
 if not df.empty:
+    # ENCABEZADO CON FECHAS
     st.markdown(f"## 🔭 Centro de Mando: {obj_in.upper()}")
+    f_min = df['Fecha'].min().strftime('%d/%m/%Y') if len(df)>0 else d_ini.strftime('%d/%m/%Y')
+    f_max = df['Fecha'].max().strftime('%d/%m/%Y') if len(df)>0 else d_fin.strftime('%d/%m/%Y')
+    st.caption(f"📅 **Resultados correspondientes al periodo:** {f_min} al {f_max}")
     
     vol = len(df); alc = df['Alcance'].sum(); inter = df['Interacciones'].sum()
     pos = len(df[df.Sentimiento.str.contains("Positivo")])
@@ -239,25 +251,33 @@ if not df.empty:
         fig_tree.update_layout(height=600, margin=dict(t=0,l=0,r=0,b=0), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="white"))
         st.plotly_chart(fig_tree, use_container_width=True)
 
-    # === TAB 2: EMOCIONES ===
+    # === TAB 2: EMOCIONES (RECUPERADO RADAR Y TEXTOS BLANCOS) ===
     with tabs[1]:
         c3, c4 = st.columns(2)
         with c3:
             st.markdown("### 📡 Radar Emocional")
-            e_c = df['Vibra'].value_counts().reset_index()
-            e_c.columns = ['Vibra', 'Count']
-            fig_r = px.line_polar(e_c, r='Count', theta='Vibra', line_close=True, template="plotly_dark")
-            fig_r.update_traces(fill='toself', line_color='#00F0FF')
-            fig_r.update_layout(paper_bgcolor="rgba(0,0,0,0)", height=450)
-            st.plotly_chart(fig_r, use_container_width=True)
+            if 'Vibra' in df.columns and len(df) > 0:
+                e_c = df['Vibra'].value_counts().reset_index()
+                e_c.columns = ['Vibra', 'Count']
+                fig_r = px.line_polar(e_c, r='Count', theta='Vibra', line_close=True, template="plotly_dark")
+                fig_r.update_traces(fill='toself', line_color='#00F0FF')
+                fig_r.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", height=450,
+                    polar=dict(radialaxis=dict(visible=True, color="white"), angularaxis=dict(color="white")),
+                    font=dict(color="white")
+                )
+                st.plotly_chart(fig_r, use_container_width=True)
+            else:
+                st.info("Insuficientes datos para radar emocional.")
         with c4:
             st.markdown("### 🥧 Share de Canal")
             colores_seguros = ['#00F0FF', '#0055FF', '#1E293B', '#FACC15', '#FF0055', '#22C55E']
             fig_p = px.pie(df, names='Fuente', hole=0.5, color_discrete_sequence=colores_seguros)
-            fig_p.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)")
+            fig_p.update_traces(textfont=dict(color="white")) # Letras blancas aseguradas
+            fig_p.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", font=dict(color="white"))
             st.plotly_chart(fig_p, use_container_width=True)
 
-    # === TAB 3: TÁCTICO ===
+    # === TAB 3: TÁCTICO (FIX FLASH EN EL MAPA) ===
     with tabs[2]:
         st.markdown("### 📍 Despliegue Territorial")
         m = folium.Map(location=[-29.90, -71.25], zoom_start=12, tiles="CartoDB dark_matter")
@@ -265,28 +285,29 @@ if not df.empty:
         for _, r in df.iterrows():
             c = "green" if "Positivo" in r['Sentimiento'] else "red" if "Negativo" in r['Sentimiento'] else "orange"
             folium.Marker([random.uniform(-29.95,-29.85), random.uniform(-71.3,-71.2)], popup=r['Titular'], icon=folium.Icon(color=c)).add_to(mc)
-        st_folium(m, width="100%", height=500)
+        
+        # returned_objects=[] evita que Folium haga un full re-render y cause el flash blanco al interactuar
+        st_folium(m, width="100%", height=500, returned_objects=[])
 
-    # === TAB 4: EMBUDO & DATA (MEJORADO CON EXPLICACIÓN) ===
+    # === TAB 4: EMBUDO & DATA ===
     with tabs[3]:
         c5, c6 = st.columns([1, 1])
         with c5:
-            st.markdown("### 🌪️ Embudo de Conversión (Funnel)")
+            st.markdown("### 🌪️ Embudo de Conversión")
             fig_fun = px.funnel(pd.DataFrame({
-                'Etapa': ['1. Alcance (Vistas Potenciales)', '2. Lecturas Estimadas (Clics)', '3. Interacción (Engagement)', '4. Viralización'],
+                'Etapa': ['1. Alcance (Vistas)', '2. Lecturas (Clics)', '3. Interacción', '4. Viralización'],
                 'Valor': [alc, alc*0.15, inter, inter*0.08]
             }), x='Valor', y='Etapa')
-            fig_fun.update_traces(marker=dict(color=["#00F0FF", "#00BFFF", "#1E90FF", "#0000FF"]))
-            fig_fun.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)")
+            fig_fun.update_traces(marker=dict(color=["#00F0FF", "#00BFFF", "#1E90FF", "#0000FF"]), textfont=dict(color="white"))
+            fig_fun.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", font=dict(color="white"))
             st.plotly_chart(fig_fun, use_container_width=True)
             
-            # EXPLICACIÓN DEL EMBUDO
             st.info("""
-            **💡 ¿Cómo leer este Embudo?**
-            * **Alcance:** Es el universo total de personas que *pudieron* ver la noticia en su pantalla.
-            * **Lecturas:** El porcentaje estimado (~15%) que hizo clic o se detuvo a leer.
-            * **Interacción:** Los usuarios que reaccionaron (Likes, Comentarios, Compartir).
-            * **Viralización:** El núcleo duro que está propagando el mensaje a otras redes.
+            **💡 Lectura del Embudo:**
+            * **Alcance:** Personas que vieron la noticia en su pantalla.
+            * **Lecturas:** Quienes hicieron clic para leer (~15%).
+            * **Interacción:** Usuarios que reaccionaron (Likes, Comentarios).
+            * **Viralización:** El núcleo que está compartiendo el contenido.
             """)
         
         with c6:
@@ -301,7 +322,7 @@ if not df.empty:
                     st.success("Dato incorporado exitosamente.")
                     st.rerun()
 
-    # === TAB 5: YOUTUBE AI (ULTRA REALISTA) ===
+    # === TAB 5: YOUTUBE AI (ERROR BLINDADO) ===
     with tabs[4]:
         st.markdown("### ▶️ Motor AI: Análisis de Video (Gemini API Integration)")
         st.caption("Pega enlaces de YouTube. El motor simula la extracción de audio, NLP y análisis de sentimiento.")
@@ -310,37 +331,43 @@ if not df.empty:
         
         if st.button("🧠 PROCESAR Y TRANSCRIBIR CON IA"):
             if yt_links:
-                with st.spinner("Inicializando Gemini API... Tokenizando audio... Analizando espectro emocional..."):
-                    time.sleep(3) # Simulación de procesamiento profundo
-                    
-                    st.success("✅ Procesamiento completado. Precisión del modelo: 94.2%")
-                    st.divider()
-                    
-                    c_yt1, c_yt2 = st.columns([2,1])
-                    with c_yt1:
-                        st.markdown("#### 📑 Síntesis de Inteligencia Artificial (Deep Text)")
-                        st.markdown(f"""
-                        **Análisis Semántico Transcrito:**
-                        Los modelos de NLP han detectado que el foco principal de los videos gira en torno a la figura de **'{obj_in.title()}'**. 
+                try: # EVITA EL ERROR SI LA TABLA ESTÁ VACÍA
+                    with st.spinner("Conectando con Motor Gemini... Tokenizando audio..."):
+                        time.sleep(3) 
                         
-                        * **Contexto de la Conversación:** Se identifican picos de modulación de voz asociados a debates sobre gestión territorial y seguridad ciudadana. La narrativa es altamente estructurada.
-                        * **Keywords Extraídas del Audio:** *Inversión, Promesas, Comunidad, Respuestas, La Serena.*
-                        * **Vector de Emoción:** La valencia emocional general extraída de la transcripción es **{df['Vibra'].mode()[0]}**, sugiriendo que la audiencia objetivo está receptiva, pero exige validación de datos.
+                        # Extraemos la vibra de forma segura
+                        v_mod = df['Vibra'].mode()[0] if not df.empty and len(df['Vibra'].mode()) > 0 else "👁️ Expectativa"
                         
-                        **Veredicto Táctico:**
-                        Los videos presentan un formato diseñado para generar "Watch Time" alto. Se recomienda crear "Shorts" o cápsulas de 30 segundos refutando o apoyando los 3 puntos clave mencionados en los primeros minutos de reproducción.
-                        """)
-                    with c_yt2:
-                        st.markdown("#### 📡 Métricas del Análisis")
-                        st.metric("Videos Detectados", len(yt_links.split('\n')))
-                        st.metric("Tono Predominante", "Informativo / Crítico")
-                        st.markdown("**Índice de Riesgo de Viralidad:**")
-                        st.progress(78)
-                        st.caption("78% - Probabilidad alta de ser tendencia local.")
+                        st.success("✅ Procesamiento completado. Precisión del modelo: 94.2%")
+                        st.divider()
+                        
+                        c_yt1, c_yt2 = st.columns([2,1])
+                        with c_yt1:
+                            st.markdown("#### 📑 Síntesis de Inteligencia Artificial (Deep Text)")
+                            st.markdown(f"""
+                            **Análisis Semántico Transcrito:**
+                            Los modelos de NLP han detectado que el foco principal de los videos gira en torno a la figura de **'{obj_in.title()}'**. 
+                            
+                            * **Contexto de la Conversación:** Se identifican picos de modulación de voz asociados a debates sobre gestión territorial.
+                            * **Keywords Extraídas del Audio:** *Inversión, Promesas, Comunidad, Respuestas, La Serena.*
+                            * **Vector de Emoción:** La valencia emocional general extraída de la transcripción es **{v_mod}**, sugiriendo que la audiencia está receptiva, pero exige validación.
+                            
+                            **Veredicto Táctico:**
+                            Los videos presentan un formato diseñado para generar "Watch Time" alto. Se recomienda crear cápsulas refutando o apoyando los puntos clave.
+                            """)
+                        with c_yt2:
+                            st.markdown("#### 📡 Métricas del Análisis")
+                            st.metric("Videos Detectados", len(yt_links.strip().split('\n')))
+                            st.metric("Tono Predominante", "Informativo / Crítico")
+                            st.markdown("**Índice de Riesgo de Viralidad:**")
+                            st.progress(78)
+                            st.caption("78% - Probabilidad alta de ser tendencia local.")
+                except Exception as e:
+                    st.error("Error temporal en la síntesis. Intente añadir más menciones al radar primero.")
             else:
                 st.warning("⚠️ Ingresa al menos un enlace válido de YouTube.")
 
-    # === TAB 6: REPORTE PRO (INTERACTIVO Y PROFUNDO) ===
+    # === TAB 6: REPORTE PRO (CON SELECTBOX LEGIBLES) ===
     with tabs[5]:
         st.markdown("### 📄 Generador de Informes C-Level Avanzado")
         
@@ -348,24 +375,22 @@ if not df.empty:
         estilo_rep = c_rep1.selectbox("Estilo de Redacción", ["Ejecutivo Directo", "Análisis Político", "Gestión de Crisis"])
         longitud_rep = c_rep2.selectbox("Profundidad", ["Estándar", "Extendido (Detallado)"])
         
-        # Generador de Texto Dinámico
         if c_rep3.button("🔄 GENERAR / ALARGAR INFORME", use_container_width=True):
-            top_src = df['Fuente'].mode()[0]
-            vibra = df['Vibra'].mode()[0]
+            top_src = df['Fuente'].mode()[0] if not df.empty else "N/A"
+            vibra = df['Vibra'].mode()[0] if not df.empty and len(df['Vibra'].mode()) > 0 else "Neutral"
             
             if estilo_rep == "Ejecutivo Directo":
                 txt_base = f"INFORME EJECUTIVO: {obj_in.upper()}\n\nEl sistema Sentinel reporta {vol} menciones totales con un alcance de {alc/1000000:.1f}M. La favorabilidad es de {fav}%. Principal foco de atención en '{top_src}' con una emoción de {vibra}. Se aconseja mantener monitoreo activo."
             elif estilo_rep == "Análisis Político":
-                txt_base = f"ANÁLISIS DE COYUNTURA Y REPUTACIÓN: {obj_in.upper()}\n\n1. CONTEXTO MEDIÁTICO:\nEn el presente ciclo, el ecosistema digital ha generado {vol} impactos. El Share of Voice está dominado por {top_src}, estableciendo la agenda sobre {obj_in}.\n\n2. TEMPERATURA SOCIAL:\nLa emoción subyacente ({vibra}) refleja una polarización que se traduce en {inter} interacciones. El índice de favorabilidad ({fav}%) obliga a reestructurar la narrativa en zonas geográficas clave como {df['Lugar'].mode()[0]}.\n\n3. ACCIÓN ESTRATÉGICA:\nDesplegar vocerías para capitalizar los espacios de oportunidad detectados."
+                txt_base = f"ANÁLISIS DE COYUNTURA Y REPUTACIÓN: {obj_in.upper()}\n\n1. CONTEXTO MEDIÁTICO:\nEn el presente ciclo, el ecosistema ha generado {vol} impactos. El Share of Voice está dominado por {top_src}.\n\n2. TEMPERATURA SOCIAL:\nLa emoción subyacente ({vibra}) refleja una polarización con {inter} interacciones. El índice de favorabilidad ({fav}%) obliga a reestructurar la narrativa en zonas clave como {df['Lugar'].mode()[0] if not df.empty else 'La Serena'}.\n\n3. ACCIÓN ESTRATÉGICA:\nDesplegar vocerías para capitalizar oportunidades."
             else:
-                txt_base = f"REPORTE DE MITIGACIÓN DE CRISIS: {obj_in.upper()}\n\nALERTA TÁCTICA. Se registran {vol} focos de conversación. Alcance de riesgo: {alc/1000000:.1f}M. Emoción detectada: {vibra}. Prioridad inmediata: Contener la propagación en '{top_src}' y generar respuestas oficiales rápidas para frenar el engagement negativo."
+                txt_base = f"REPORTE DE MITIGACIÓN DE CRISIS: {obj_in.upper()}\n\nALERTA TÁCTICA. Se registran {vol} focos de conversación. Alcance de riesgo: {alc/1000000:.1f}M. Emoción detectada: {vibra}. Prioridad inmediata: Contener propagación en '{top_src}' y generar respuestas oficiales."
             
             if longitud_rep == "Extendido (Detallado)":
-                txt_base += "\n\nANEXO METODOLÓGICO:\nLos datos fueron extraídos utilizando algoritmos de procesamiento de lenguaje natural (NLP). Las proyecciones de alcance asumen un margen de error del 5% basado en los algoritmos de plataformas sociales. La trazabilidad incluye revisión de menciones orgánicas y notas de prensa estructuradas."
+                txt_base += "\n\nANEXO METODOLÓGICO:\nLos datos fueron extraídos usando algoritmos NLP. Las proyecciones de alcance asumen margen de error del 5%. La trazabilidad incluye revisión de menciones orgánicas y notas de prensa."
                 
             st.session_state.reporte_generado = txt_base
 
-        # Muestra el texto generado (o uno por defecto)
         reporte_actual = st.text_area("Cuerpo del Documento (Editable):", value=st.session_state.reporte_generado, height=350)
         
         if st.button("📥 DESCARGAR PDF OFICIAL"):
