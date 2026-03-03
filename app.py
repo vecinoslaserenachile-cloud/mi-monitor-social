@@ -35,15 +35,15 @@ if 'proyectos' not in st.session_state: st.session_state.proyectos = {}
 if 'search_active' not in st.session_state: st.session_state.search_active = False
 if 'reporte_generado' not in st.session_state: st.session_state.reporte_generado = ""
 
-# --- 3. ESTILOS APEX PREMIUM (FIX CONTRASTES Y EXPANDERS) ---
+# --- 3. ESTILOS APEX PREMIUM (BLINDAJE TOTAL CONTRA TEMA CLARO) ---
 speed = "0.5s" if st.session_state.search_active else "12s"
 
 st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
     
-    /* FONDO NEGRO Y FUENTE */
-    .stApp {{ background-color: #000000 !important; }}
+    /* FONDO NEGRO FORZADO EN TODAS LAS CAPAS DE STREAMLIT */
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{ background-color: #000000 !important; }}
     [data-testid="stSidebar"] {{ background-color: #050505 !important; border-right: 1px solid #222 !important; }}
     h1, h2, h3, h4, p, li, span, label, div {{ color: #FFFFFF !important; font-family: 'Montserrat', sans-serif; }}
     
@@ -57,19 +57,13 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
     
-    /* INPUTS OSCUROS Y TEXTOS LEGIBLES */
-    div[data-baseweb="input"], textarea {{
+    /* BLINDAJE DE INPUTS (CAJAS DE TEXTO) PARA QUE SEAN OSCURAS */
+    input, textarea, [data-baseweb="input"], [data-baseweb="base-input"], [data-baseweb="select"] {{
         background-color: #111111 !important;
-        border: 1px solid #333 !important;
         color: #00F0FF !important;
+        -webkit-text-fill-color: #00F0FF !important;
+        border-color: #333 !important;
     }}
-    input {{ color: #FFFFFF !important; }}
-    
-    /* FIX: MENÚS DESPLEGABLES (SELECTBOX) FONDO OSCURO */
-    div[data-baseweb="select"] > div {{ background-color: #111111 !important; border-color: #333 !important; color: #FFFFFF !important; }}
-    div[role="listbox"] {{ background-color: #111111 !important; color: #FFFFFF !important; }}
-    li[role="option"] {{ color: #FFFFFF !important; }}
-    span[data-baseweb="select-value"] {{ color: #00F0FF !important; font-weight: bold; }}
     
     /* FIX: EXPANDERS EN SIDEBAR (FILTROS) */
     div[data-testid="stExpander"] details summary p {{ color: #00F0FF !important; font-weight: bold !important; }}
@@ -89,8 +83,8 @@ st.markdown(f"""
     .kpi-num {{ font-size: 42px; color: #FFFFFF !important; font-weight: 900; margin: 5px 0; text-shadow: 0 0 15px rgba(0,240,255,0.6); }}
     .kpi-sub {{ font-size: 12px; color: #00F0FF !important; font-weight: bold; }}
     
-    /* IFRAME MAPA */
-    iframe {{ background-color: #000000 !important; }}
+    /* IFRAME MAPA Y OTROS IFRAMES - PREVIENE FLASH BLANCO */
+    iframe {{ background-color: #000000 !important; border: none; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -136,7 +130,7 @@ def run_scan_apex(obj, ini, fin, exclude, sources):
     prog = st.progress(0)
     
     for i, u in enumerate(urls):
-        feed = feedparser.parse(url)
+        feed = feedparser.parse(u)
         for entry in feed.entries:
             if exclude and exclude.lower() in entry.title.lower(): continue
             if entry.link in seen: continue
@@ -179,7 +173,7 @@ with st.sidebar:
     components.html(faro_html, height=200)
     
     st.title("EL FARO")
-    st.caption("Sentinel Apex v46.0 | Perfection")
+    st.caption("Sentinel Apex v47.0 | Perfection")
     
     obj_in = st.text_input("Objetivo", "Daniela Norambuena")
     
@@ -251,7 +245,7 @@ if not df.empty:
         fig_tree.update_layout(height=600, margin=dict(t=0,l=0,r=0,b=0), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="white"))
         st.plotly_chart(fig_tree, use_container_width=True)
 
-    # === TAB 2: EMOCIONES (RECUPERADO RADAR Y TEXTOS BLANCOS) ===
+    # === TAB 2: EMOCIONES ===
     with tabs[1]:
         c3, c4 = st.columns(2)
         with c3:
@@ -273,11 +267,11 @@ if not df.empty:
             st.markdown("### 🥧 Share de Canal")
             colores_seguros = ['#00F0FF', '#0055FF', '#1E293B', '#FACC15', '#FF0055', '#22C55E']
             fig_p = px.pie(df, names='Fuente', hole=0.5, color_discrete_sequence=colores_seguros)
-            fig_p.update_traces(textfont=dict(color="white")) # Letras blancas aseguradas
+            fig_p.update_traces(textfont=dict(color="white"))
             fig_p.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", font=dict(color="white"))
             st.plotly_chart(fig_p, use_container_width=True)
 
-    # === TAB 3: TÁCTICO (FIX FLASH EN EL MAPA) ===
+    # === TAB 3: TÁCTICO ===
     with tabs[2]:
         st.markdown("### 📍 Despliegue Territorial")
         m = folium.Map(location=[-29.90, -71.25], zoom_start=12, tiles="CartoDB dark_matter")
@@ -286,16 +280,16 @@ if not df.empty:
             c = "green" if "Positivo" in r['Sentimiento'] else "red" if "Negativo" in r['Sentimiento'] else "orange"
             folium.Marker([random.uniform(-29.95,-29.85), random.uniform(-71.3,-71.2)], popup=r['Titular'], icon=folium.Icon(color=c)).add_to(mc)
         
-        # returned_objects=[] evita que Folium haga un full re-render y cause el flash blanco al interactuar
+        # returned_objects=[] previene que el mapa repinte toda la app al interactuar
         st_folium(m, width="100%", height=500, returned_objects=[])
 
     # === TAB 4: EMBUDO & DATA ===
     with tabs[3]:
         c5, c6 = st.columns([1, 1])
         with c5:
-            st.markdown("### 🌪️ Embudo de Conversión")
+            st.markdown("### 🌪️ Embudo de Conversión (Funnel)")
             fig_fun = px.funnel(pd.DataFrame({
-                'Etapa': ['1. Alcance (Vistas)', '2. Lecturas (Clics)', '3. Interacción', '4. Viralización'],
+                'Etapa': ['1. Alcance (Vistas Potenciales)', '2. Lecturas Estimadas (Clics)', '3. Interacción (Engagement)', '4. Viralización'],
                 'Valor': [alc, alc*0.15, inter, inter*0.08]
             }), x='Valor', y='Etapa')
             fig_fun.update_traces(marker=dict(color=["#00F0FF", "#00BFFF", "#1E90FF", "#0000FF"]), textfont=dict(color="white"))
@@ -322,7 +316,7 @@ if not df.empty:
                     st.success("Dato incorporado exitosamente.")
                     st.rerun()
 
-    # === TAB 5: YOUTUBE AI (ERROR BLINDADO) ===
+    # === TAB 5: YOUTUBE AI ===
     with tabs[4]:
         st.markdown("### ▶️ Motor AI: Análisis de Video (Gemini API Integration)")
         st.caption("Pega enlaces de YouTube. El motor simula la extracción de audio, NLP y análisis de sentimiento.")
@@ -331,11 +325,9 @@ if not df.empty:
         
         if st.button("🧠 PROCESAR Y TRANSCRIBIR CON IA"):
             if yt_links:
-                try: # EVITA EL ERROR SI LA TABLA ESTÁ VACÍA
+                try: 
                     with st.spinner("Conectando con Motor Gemini... Tokenizando audio..."):
                         time.sleep(3) 
-                        
-                        # Extraemos la vibra de forma segura
                         v_mod = df['Vibra'].mode()[0] if not df.empty and len(df['Vibra'].mode()) > 0 else "👁️ Expectativa"
                         
                         st.success("✅ Procesamiento completado. Precisión del modelo: 94.2%")
@@ -367,7 +359,7 @@ if not df.empty:
             else:
                 st.warning("⚠️ Ingresa al menos un enlace válido de YouTube.")
 
-    # === TAB 6: REPORTE PRO (CON SELECTBOX LEGIBLES) ===
+    # === TAB 6: REPORTE PRO ===
     with tabs[5]:
         st.markdown("### 📄 Generador de Informes C-Level Avanzado")
         
