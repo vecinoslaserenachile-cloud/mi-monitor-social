@@ -19,9 +19,9 @@ import io
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
-st.set_page_config(page_title="Sentinel Apex Premium", layout="wide", page_icon="⚓")
+st.set_page_config(page_title="Sentinel Apex", layout="wide", page_icon="⚓")
 
-# --- 2. MEMORIA BLINDADA ---
+# --- 2. MEMORIA BLINDADA (Previene KeyErrors de sesiones antiguas) ---
 REQUIRED_COLS = ['Fecha', 'Fuente', 'Titular', 'Link', 'Sentimiento', 'Alcance', 'Interacciones', 'Vibra', 'Lugar', 'Tipo']
 if 'data_master' not in st.session_state:
     st.session_state.data_master = pd.DataFrame(columns=REQUIRED_COLS)
@@ -35,6 +35,7 @@ if 'proyectos' not in st.session_state: st.session_state.proyectos = {}
 if 'search_active' not in st.session_state: st.session_state.search_active = False
 
 # --- 3. ESTILOS APEX PREMIUM ---
+# Velocidad turbo para búsqueda (0.5s), lento para resultados (12s)
 speed = "0.5s" if st.session_state.search_active else "12s"
 
 st.markdown(f"""
@@ -46,7 +47,7 @@ st.markdown(f"""
     [data-testid="stSidebar"] {{ background-color: #050505 !important; border-right: 1px solid #222 !important; }}
     h1, h2, h3, h4, p, li, span, label, div {{ color: #FFFFFF !important; font-family: 'Montserrat', sans-serif; }}
     
-    /* BOTONES DE ALTO CONTRASTE (SOLUCIÓN A TEXTOS TRANSLÚCIDOS) */
+    /* BOTONES DE ALTO CONTRASTE (TEXTO BLANCO GARANTIZADO) */
     .stButton>button {{
         background: linear-gradient(90deg, #00F0FF 0%, #0055FF 100%) !important;
         color: #FFFFFF !important; 
@@ -67,7 +68,7 @@ st.markdown(f"""
     /* TABS */
     .stTabs [aria-selected="true"] {{ background-color: #00F0FF !important; color: #000000 !important; font-weight: 900 !important; }}
     
-    /* KPI CARDS HTML */
+    /* KPI CARDS HTML (SIN GRISES) */
     .kpi-container {{ display: flex; justify-content: space-between; gap: 15px; margin-bottom: 20px; }}
     .kpi-box {{
         background: linear-gradient(180deg, #111 0%, #050505 100%); 
@@ -78,7 +79,7 @@ st.markdown(f"""
     .kpi-num {{ font-size: 42px; color: #FFFFFF !important; font-weight: 900; margin: 5px 0; text-shadow: 0 0 15px rgba(0,240,255,0.6); }}
     .kpi-sub {{ font-size: 12px; color: #00F0FF !important; font-weight: bold; }}
     
-    /* IFRAME MAPA */
+    /* IFRAME MAPA - PREVIENE FLASH BLANCO */
     iframe {{ background-color: #000000 !important; }}
     </style>
     """, unsafe_allow_html=True)
@@ -152,26 +153,25 @@ def run_scan_apex(obj, ini, fin, exclude, sources):
 
 # --- 5. SIDEBAR (FARO MILIMÉTRICO + FILTROS) ---
 with st.sidebar:
-    # FARO CALIBRADO: El centro del gradiente coincide con el rectángulo amarillo (fanal)
+    # FARO CALIBRADO: El centro del gradiente coincide EXACTAMENTE con el rectángulo amarillo (fanal) a 64px desde arriba.
     faro_html = f"""
     <div style="width:100%; height:200px; background:radial-gradient(circle at bottom, #111 0%, #000 80%); position:relative; overflow:hidden; border-bottom:2px solid #00F0FF; margin-bottom:20px; display:flex; justify-content:center; align-items:flex-end;">
         
-        <div style="position:absolute; bottom:60px; left:50%; margin-left:-300px; margin-bottom:-250px; width:600px; height:600px; 
-             background:conic-gradient(from 0deg at 50% 50%, rgba(0,240,255,0.4) 0deg, transparent 50deg);
+        <div style="position:absolute; top:64px; left:50%; margin-left:-300px; margin-top:-300px; width:600px; height:600px; 
+             background:conic-gradient(from 0deg at 50% 50%, rgba(0,240,255,0.5) 0deg, transparent 50deg);
              transform-origin:50% 50%; animation: spin {speed} linear infinite; border-radius:50%;"></div>
         
-        <svg width="80px" height="140px" viewBox="0 0 100 200" style="position:relative; z-index:10; filter:drop-shadow(0 0 10px #00F0FF);">
-            <path d="M35,190 L65,190 L60,50 L40,50 Z" fill="#cbd5e1" stroke="#38BDF8" stroke-width="2"/>
-            <rect x="35" y="30" width="30" height="20" fill="#FACC15" rx="2" stroke="#FACC15"/> <path d="M30,30 L50,10 L70,30 Z" fill="#0F172A" stroke="#38BDF8" stroke-width="2"/>
-            <rect x="42" y="50" width="16" height="140" fill="#64748B" opacity="0.3"/>
+        <svg width="80px" height="160px" viewBox="0 0 100 200" style="position:relative; z-index:10; filter:drop-shadow(0 0 10px #00F0FF);">
+            <path d="M30,190 L70,190 L60,50 L40,50 Z" fill="#1e293b" stroke="#00F0FF" stroke-width="2"/>
+            <rect x="38" y="30" width="24" height="20" fill="#FACC15" rx="2" stroke="#FACC15"/> <path d="M30,30 L50,10 L70,30 Z" fill="#020617" stroke="#00F0FF" stroke-width="2"/>
         </svg>
-        <style>@keyframes spin {{ 0% {{transform: rotate(0deg);}} 100% {{transform: rotate(360deg);}} }}</style>
+        <style>@keyframes spin {{ 100% {{transform: rotate(360deg);}} }}</style>
     </div>
     """
     components.html(faro_html, height=200)
     
     st.title("EL FARO")
-    st.caption("Sentinel Apex v43.0 | Premium")
+    st.caption("Sentinel Apex v44.0 | AI Video")
     
     obj_in = st.text_input("Objetivo", "Daniela Norambuena")
     
@@ -213,7 +213,6 @@ if not df.empty:
     </div>
     """, unsafe_allow_html=True)
     
-    # SE AGREGÓ LA PESTAÑA "YOUTUBE AI" y se conservó "EMBUDO & DATA"
     tabs = st.tabs(["📊 ESTRATEGIA", "🎭 EMOCIONES", "🗺️ TÁCTICO", "🌪️ EMBUDO & DATA", "▶️ YOUTUBE AI", "📄 REPORTE"])
     
     # === TAB 1: ESTRATEGIA ===
@@ -229,8 +228,8 @@ if not df.empty:
         with c2:
             st.markdown("### 📈 Tendencia")
             daily = df.groupby('Fecha').size().reset_index(name='Menciones')
-            fig_line = px.area(daily, x='Fecha', y='Menciones', template="plotly_dark")
-            fig_line.update_traces(line_color='#00F0FF', fill_color='rgba(0, 240, 255, 0.2)')
+            # FIX DE ERROR: Sin update_traces conflictivos. Todo directo en la creación.
+            fig_line = px.area(daily, x='Fecha', y='Menciones', template="plotly_dark", color_discrete_sequence=['#00F0FF'])
             fig_line.update_layout(height=500, paper_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_line, use_container_width=True)
             
@@ -241,7 +240,7 @@ if not df.empty:
         fig_tree.update_layout(height=600, margin=dict(t=0,l=0,r=0,b=0), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="white"))
         st.plotly_chart(fig_tree, use_container_width=True)
 
-    # === TAB 2: EMOCIONES (ERROR PLOTLY CORREGIDO) ===
+    # === TAB 2: EMOCIONES ===
     with tabs[1]:
         c3, c4 = st.columns(2)
         with c3:
@@ -254,8 +253,9 @@ if not df.empty:
             st.plotly_chart(fig_r, use_container_width=True)
         with c4:
             st.markdown("### 🥧 Share de Canal")
-            # FIX: Arreglo de colores hexadecimales seguros en vez de la paleta problemática
-            fig_p = px.pie(df, names='Fuente', hole=0.5, color_discrete_sequence=['#00F0FF', '#0055FF', '#1E293B', '#FACC15', '#FF0055'])
+            # FIX DE ERROR: Arreglo de colores hexadecimales seguros (no usamos px.colors...)
+            colores_seguros = ['#00F0FF', '#0055FF', '#1E293B', '#FACC15', '#FF0055', '#22C55E']
+            fig_p = px.pie(df, names='Fuente', hole=0.5, color_discrete_sequence=colores_seguros)
             fig_p.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_p, use_container_width=True)
 
