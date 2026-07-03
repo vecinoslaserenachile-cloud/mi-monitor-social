@@ -193,7 +193,7 @@ with st.sidebar:
     st.title("EL FARO")
     st.caption("Sentinel Apex v48.0 | Perfection")
     
-    obj_in = st.text_input("Objetivo", "Daniela Norambuena")
+    obj_in = st.text_input("Objetivo", "Escribe aquí tu búsqueda de una palabra clave")
     
     with st.expander("🛠️ Filtros", expanded=False):
         exclude_in = st.text_input("Excluir", placeholder="Ej: sorteo")
